@@ -16,6 +16,9 @@
 #include <deal.II/numerics/data_out.h>
 #include <deal.II/base/function.h>
 #include <deal.II/base/utilities.h>
+#include <deal.II/base/point.h>
+#include <deal.II/grid/grid_tools.h>
+#include <deal.II/grid/manifold_lib.h>
 
 #include <functional>
 #include <vector>
@@ -28,30 +31,129 @@ namespace TransientDiffusion {
 using namespace dealii;
 
 /**
+ * Enumeration of supported geometry types.
+ * Each geometry type has its own set of size parameters.
+ */
+enum class GeometryType {
+    HYPER_CUBE,        // Unit cube scaled by size parameter
+    HYPER_RECTANGLE,   // Rectangle with custom width and height
+    HYPER_BALL,        // Circle/sphere with custom radius
+    HYPER_SHELL,       // Annulus with inner and outer radius
+    L_SHAPED,          // L-shaped domain with custom size
+    QUARTER_HYPER_BALL // Quarter circle with custom radius
+};
+
+/**
+ * Structure to hold geometry configuration parameters.
+ * Different geometry types use different subsets of these parameters.
+ */
+struct GeometryConfig {
+    GeometryType type = GeometryType::HYPER_CUBE;
+    
+    // For HYPER_CUBE: side length (default 1.0)
+    double size = 1.0;
+    
+    // For HYPER_RECTANGLE: width and height (defaults 1.0, 1.0)
+    double width = 1.0;
+    double height = 1.0;
+    
+    // For HYPER_BALL and QUARTER_HYPER_BALL: radius (default 1.0)
+    double radius = 1.0;
+    
+    // For HYPER_SHELL: inner and outer radius (defaults 0.5, 1.0)
+    double inner_radius = 0.5;
+    double outer_radius = 1.0;
+    
+    // For L_SHAPED: size of the L-domain (default 1.0)
+    double l_size = 1.0;
+    
+    // Center point for geometries that support translation (default origin)
+    Point<2> center = Point<2>(0.0, 0.0);
+    
+    // Default constructor
+    GeometryConfig() = default;
+    
+    // Convenience constructors for common cases
+    static GeometryConfig hyper_cube(double side_length = 1.0) {
+        GeometryConfig config;
+        config.type = GeometryType::HYPER_CUBE;
+        config.size = side_length;
+        return config;
+    }
+    
+    static GeometryConfig hyper_rectangle(double w, double h) {
+        GeometryConfig config;
+        config.type = GeometryType::HYPER_RECTANGLE;
+        config.width = w;
+        config.height = h;
+        return config;
+    }
+    
+    static GeometryConfig hyper_ball(double r, Point<2> center_point = Point<2>(0.0, 0.0)) {
+        GeometryConfig config;
+        config.type = GeometryType::HYPER_BALL;
+        config.radius = r;
+        config.center = center_point;
+        return config;
+    }
+    
+    static GeometryConfig hyper_shell(double inner_r, double outer_r, Point<2> center_point = Point<2>(0.0, 0.0)) {
+        GeometryConfig config;
+        config.type = GeometryType::HYPER_SHELL;
+        config.inner_radius = inner_r;
+        config.outer_radius = outer_r;
+        config.center = center_point;
+        return config;
+    }
+    
+    static GeometryConfig l_shaped(double domain_size = 1.0) {
+        GeometryConfig config;
+        config.type = GeometryType::L_SHAPED;
+        config.l_size = domain_size;
+        return config;
+    }
+    
+    static GeometryConfig quarter_hyper_ball(double r, Point<2> center_point = Point<2>(0.0, 0.0)) {
+        GeometryConfig config;
+        config.type = GeometryType::QUARTER_HYPER_BALL;
+        config.radius = r;
+        config.center = center_point;
+        return config;
+    }
+};
+
+/**
  * Python-friendly wrapper around the transient diffusion solver.
- * This class is designed specifically to be exposed to Python via pybind11,
- * so all public methods use simple data types that can be easily converted.
+ * Now supports multiple geometry types with customizable dimensions.
  */
 class DiffusionEnvironmentWrapper {
 public:
     /**
      * Constructor sets up the finite element problem structure.
-     * This does all the expensive one-time setup: mesh generation,
-     * degree of freedom distribution, and matrix assembly.
      * 
+     * @param geometry_config Configuration specifying geometry type and dimensions
      * @param refinement_level Controls mesh resolution (higher = finer mesh)
      * @param diffusion_coeff Physical diffusion coefficient K
      * @param dt Time step size
      * @param final_t Total simulation time
      */
-    DiffusionEnvironmentWrapper(int refinement_level = 4, 
+    DiffusionEnvironmentWrapper(const GeometryConfig& geometry_config = GeometryConfig::hyper_cube(),
+                               int refinement_level = 4, 
                                double diffusion_coeff = 0.1,
                                double dt = 0.01, 
                                double final_t = 1.0);
 
     /**
+     * Alternative constructor for backward compatibility.
+     * Creates a unit hyper_cube geometry.
+     */
+    DiffusionEnvironmentWrapper(int refinement_level, 
+                               double diffusion_coeff,
+                               double dt, 
+                               double final_t);
+
+    /**
      * Reset the simulation with a new initial condition.
-     * This is equivalent to the reset() method in RL environments.
      * The initial_condition function should take x,y coordinates and return
      * the initial value at that point.
      */
@@ -59,7 +161,6 @@ public:
 
     /**
      * Advance the simulation by one time step.
-     * This solves the linear system for the next time level.
      */
     void step();
 
@@ -80,44 +181,52 @@ public:
 
     /**
      * Extract solution values as a vector.
-     * This returns the finite element solution at all degrees of freedom.
-     * The ordering corresponds to the mesh points returned by get_mesh_points().
      */
     std::vector<double> get_solution_data() const;
 
     /**
      * Get the physical coordinates of all mesh points.
-     * Returns a vector of [x,y] coordinate pairs.
-     * This tells you where each solution value in get_solution_data() is located.
      */
     std::vector<std::array<double, 2>> get_mesh_points() const;
 
     /**
      * Get number of degrees of freedom (mesh points).
-     * Useful for understanding the size of your state space.
      */
     size_t get_num_dofs() const { return dof_handler.n_dofs(); }
 
     /**
-     * Optional: write current solution to VTU file for visualization.
-     * Only use this for episodes you want to examine in detail.
+     * Write current solution to VTU file for visualization.
      */
     void write_vtk(const std::string& filename) const;
 
     /**
-     * Get some useful physical quantities for RL state representation.
-     * Returns [total_energy, max_value, min_value, energy_center_x, energy_center_y]
+     * Get useful physical quantities for RL state representation.
      */
     std::vector<double> get_physical_quantities() const;
 
     /**
      * Allow modification of physical parameters during simulation.
-     * Useful if your RL agent wants to control these as actions.
      */
     void set_diffusion_coefficient(double K_new);
 
+    /**
+     * Get information about the current geometry configuration.
+     */
+    GeometryConfig get_geometry_config() const { return geometry_config_; }
+
+    /**
+     * Get a string description of the current geometry.
+     */
+    std::string get_geometry_description() const;
+
+    /**
+     * Get the bounding box of the computational domain.
+     * Returns [x_min, x_max, y_min, y_max].
+     */
+    std::vector<double> get_domain_bounds() const;
+
 private:
-    // Core deal.II components - same as your original code but organized for reuse
+    // Core deal.II components
     Triangulation<2> triangulation;
     FE_Q<2> fe;
     DoFHandler<2> dof_handler;
@@ -133,24 +242,35 @@ private:
     double final_time;
     unsigned int timestep_number;
     const double theta = 1.0;  // Implicit time stepping parameter
-    double K;  // Diffusion coefficient (now modifiable)
+    double K;  // Diffusion coefficient
+
+    // Geometry configuration
+    GeometryConfig geometry_config_;
 
     // Pre-computed data for efficient Python interface
     std::vector<std::array<double, 2>> mesh_coordinates;
     bool system_initialized;
 
-    // Private methods that handle the FEM mechanics
+    // Private methods
     void setup_system();
     void assemble_system();
     void solve_time_step();
     void compute_mesh_coordinates();
-    void rebuild_system_matrix();  // Called when K changes
+    void rebuild_system_matrix();
+    
+    /**
+     * Create the computational mesh based on geometry configuration.
+     */
+    void create_geometry();
+    
+    /**
+     * Validate geometry configuration parameters.
+     */
+    void validate_geometry_config() const;
 };
 
 /**
  * Helper class to convert Python functions to deal.II Functions.
- * This bridges the gap between Python callable objects and deal.II's
- * Function interface.
  */
 class PythonInitialCondition : public Function<2> {
 public:

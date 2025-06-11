@@ -7,113 +7,236 @@
 
 namespace py = pybind11;
 
-/**
- * This is the pybind11 module definition that creates the Python interface.
- * Each .def() call exposes a C++ method to Python with automatic type conversion.
- * The module name "diffusion_env" is what you'll use in Python: import diffusion_env
- */
 PYBIND11_MODULE(diffusion_env, m) {
-    // Module documentation that appears when users call help() in Python
     m.doc() = R"pbdoc(
         Deal.II based diffusion environment for reinforcement learning
         
         This module provides a high-performance finite element environment
-        for solving transient diffusion equations. It's designed specifically
-        for reinforcement learning applications where you need to run many
-        simulation episodes efficiently.
+        for solving transient diffusion equations with support for multiple
+        geometry types and customizable domain sizes.
+        
+        Supported geometries:
+        - Hyper cube: Square domain with customizable side length
+        - Hyper rectangle: Rectangular domain with custom width and height  
+        - Hyper ball: Circular domain with custom radius
+        - Hyper shell: Annular domain with custom inner and outer radii
+        - L-shaped: L-shaped domain with custom size
+        - Quarter hyper ball: Quarter-circle domain with custom radius
         
         Example usage:
             import diffusion_env
             import numpy as np
             
-            # Create environment
-            env = diffusion_env.DiffusionEnvironment(refinement_level=4)
+            # Create a circular environment
+            config = diffusion_env.GeometryConfig.hyper_ball(radius=2.0)
+            env = diffusion_env.DiffusionEnvironment(config, refinement_level=4)
             
             # Define initial condition
             def initial_condition(x, y):
-                return np.sin(np.pi * x) * np.sin(np.pi * y)
+                return np.exp(-((x-1)**2 + (y-1)**2))
             
             # Run simulation
             env.reset(initial_condition)
             while not env.is_done():
                 env.step()
-                solution = env.get_solution_data()  # NumPy array
-                points = env.get_mesh_points()      # NumPy array
+                solution = env.get_solution_data()
     )pbdoc";
 
-    // Expose the main DiffusionEnvironmentWrapper class to Python
+    // Expose the GeometryType enumeration
+    py::enum_<TransientDiffusion::GeometryType>(m, "GeometryType", R"pbdoc(
+        Enumeration of supported geometry types.
+        
+        Each geometry type has different parameters that control its size and shape.
+    )pbdoc")
+        .value("HYPER_CUBE", TransientDiffusion::GeometryType::HYPER_CUBE, 
+               "Square domain with customizable side length")
+        .value("HYPER_RECTANGLE", TransientDiffusion::GeometryType::HYPER_RECTANGLE,
+               "Rectangular domain with custom width and height")
+        .value("HYPER_BALL", TransientDiffusion::GeometryType::HYPER_BALL,
+               "Circular domain with custom radius")
+        .value("HYPER_SHELL", TransientDiffusion::GeometryType::HYPER_SHELL,
+               "Annular (ring) domain with custom inner and outer radii")
+        .value("L_SHAPED", TransientDiffusion::GeometryType::L_SHAPED,
+               "L-shaped domain with custom size")
+        .value("QUARTER_HYPER_BALL", TransientDiffusion::GeometryType::QUARTER_HYPER_BALL,
+               "Quarter-circle domain with custom radius")
+        .export_values();
+
+    // Expose the GeometryConfig structure
+    py::class_<TransientDiffusion::GeometryConfig>(m, "GeometryConfig", R"pbdoc(
+        Configuration structure for specifying geometry type and parameters.
+        
+        Different geometry types use different subsets of the available parameters.
+        Use the static factory methods for convenient configuration.
+    )pbdoc")
+        .def(py::init<>(), "Create default geometry configuration (unit hyper cube)")
+        
+        // Expose all fields
+        .def_readwrite("type", &TransientDiffusion::GeometryConfig::type,
+                      "Geometry type (GeometryType enum)")
+        .def_readwrite("size", &TransientDiffusion::GeometryConfig::size,
+                      "Side length for HYPER_CUBE or general size for L_SHAPED")
+        .def_readwrite("width", &TransientDiffusion::GeometryConfig::width,
+                      "Width for HYPER_RECTANGLE")
+        .def_readwrite("height", &TransientDiffusion::GeometryConfig::height,
+                      "Height for HYPER_RECTANGLE")
+        .def_readwrite("radius", &TransientDiffusion::GeometryConfig::radius,
+                      "Radius for HYPER_BALL and QUARTER_HYPER_BALL")
+        .def_readwrite("inner_radius", &TransientDiffusion::GeometryConfig::inner_radius,
+                      "Inner radius for HYPER_SHELL")
+        .def_readwrite("outer_radius", &TransientDiffusion::GeometryConfig::outer_radius,
+                      "Outer radius for HYPER_SHELL")
+        .def_readwrite("l_size", &TransientDiffusion::GeometryConfig::l_size,
+                      "Size parameter for L_SHAPED domain")
+        
+        // Static factory methods for convenient configuration
+        .def_static("hyper_cube", &TransientDiffusion::GeometryConfig::hyper_cube,
+                   R"pbdoc(
+                       Create configuration for a square domain.
+                       
+                       Args:
+                           side_length (float): Side length of the square (default: 1.0)
+                       
+                       Returns:
+                           GeometryConfig: Configuration for hyper cube geometry
+                   )pbdoc",
+                   py::arg("side_length") = 1.0)
+                   
+        .def_static("hyper_rectangle", &TransientDiffusion::GeometryConfig::hyper_rectangle,
+                   R"pbdoc(
+                       Create configuration for a rectangular domain.
+                       
+                       Args:
+                           width (float): Width of the rectangle
+                           height (float): Height of the rectangle
+                       
+                       Returns:
+                           GeometryConfig: Configuration for hyper rectangle geometry
+                   )pbdoc",
+                   py::arg("width"), py::arg("height"))
+                   
+        .def_static("hyper_ball", &TransientDiffusion::GeometryConfig::hyper_ball,
+                   R"pbdoc(
+                       Create configuration for a circular domain.
+                       
+                       Args:
+                           radius (float): Radius of the circle
+                           center (tuple): Center point as (x, y) coordinates (default: (0, 0))
+                       
+                       Returns:
+                           GeometryConfig: Configuration for hyper ball geometry
+                   )pbdoc",
+                   py::arg("radius"), py::arg("center") = std::array<double, 2>{0.0, 0.0})
+                   
+        .def_static("hyper_shell", &TransientDiffusion::GeometryConfig::hyper_shell,
+                   R"pbdoc(
+                       Create configuration for an annular (ring) domain.
+                       
+                       Args:
+                           inner_radius (float): Inner radius of the annulus
+                           outer_radius (float): Outer radius of the annulus
+                           center (tuple): Center point as (x, y) coordinates (default: (0, 0))
+                       
+                       Returns:
+                           GeometryConfig: Configuration for hyper shell geometry
+                   )pbdoc",
+                   py::arg("inner_radius"), py::arg("outer_radius"), 
+                   py::arg("center") = std::array<double, 2>{0.0, 0.0})
+                   
+        .def_static("l_shaped", &TransientDiffusion::GeometryConfig::l_shaped,
+                   R"pbdoc(
+                       Create configuration for an L-shaped domain.
+                       
+                       Args:
+                           domain_size (float): Size parameter for the L-domain (default: 1.0)
+                       
+                       Returns:
+                           GeometryConfig: Configuration for L-shaped geometry
+                   )pbdoc",
+                   py::arg("domain_size") = 1.0)
+                   
+        .def_static("quarter_hyper_ball", &TransientDiffusion::GeometryConfig::quarter_hyper_ball,
+                   R"pbdoc(
+                       Create configuration for a quarter-circle domain.
+                       
+                       Args:
+                           radius (float): Radius of the quarter circle
+                           center (tuple): Center point as (x, y) coordinates (default: (0, 0))
+                       
+                       Returns:
+                           GeometryConfig: Configuration for quarter hyper ball geometry
+                   )pbdoc",
+                   py::arg("radius"), py::arg("center") = std::array<double, 2>{0.0, 0.0});
+
+    // Expose the main DiffusionEnvironmentWrapper class
     py::class_<TransientDiffusion::DiffusionEnvironmentWrapper>(m, "DiffusionEnvironment", R"pbdoc(
-        High-performance transient diffusion solver for reinforcement learning.
+        High-performance transient diffusion solver with multiple geometry support.
         
-        This class wraps a deal.II finite element solver in a Python-friendly interface.
-        It's designed for efficient repeated use in RL training where you need to
-        run thousands of simulation episodes.
-        
-        The solver uses implicit time stepping and linear finite elements on a
-        structured quadrilateral mesh. Boundary conditions are zero Dirichlet
-        (fixed temperature of zero) on all domain boundaries.
+        This class wraps a deal.II finite element solver with support for various
+        domain geometries including squares, rectangles, circles, annuli, and L-shaped domains.
     )pbdoc")
     
-        // Constructor with default arguments
-        // pybind11 automatically converts Python arguments to C++ types
-        .def(py::init<int, double, double, double>(),
+        // Main constructor with geometry configuration
+        .def(py::init<const TransientDiffusion::GeometryConfig&, int, double, double, double>(),
              R"pbdoc(
-                 Create a new diffusion environment.
+                 Create a new diffusion environment with custom geometry.
                  
                  Args:
-                     refinement_level (int): Mesh refinement level (default: 4).
-                         Higher values give finer meshes but slower computation.
-                         Level 4 gives 289 degrees of freedom, level 5 gives 1089.
-                     diffusion_coeff (float): Physical diffusion coefficient (default: 0.1).
-                         Higher values make diffusion happen faster.
-                     dt (float): Time step size (default: 0.01).
-                         Smaller values give more accurate solutions but require more steps.
-                     final_time (float): Total simulation time (default: 1.0).
+                     geometry_config (GeometryConfig): Geometry configuration specifying
+                         domain type and dimensions
+                     refinement_level (int): Mesh refinement level (default: 4)
+                     diffusion_coeff (float): Physical diffusion coefficient (default: 0.1)
+                     dt (float): Time step size (default: 0.01)
+                     final_time (float): Total simulation time (default: 1.0)
                  
-                 The constructor performs all expensive one-time setup operations:
-                 mesh generation, finite element space setup, and matrix assembly.
-                 This cost is amortized over many episodes.
+                 Example:
+                     # Create a circular domain with radius 2.0
+                     config = GeometryConfig.hyper_ball(2.0)
+                     env = DiffusionEnvironment(config, refinement_level=5)
+             )pbdoc",
+             py::arg("geometry_config") = TransientDiffusion::GeometryConfig::hyper_cube(),
+             py::arg("refinement_level") = 4,
+             py::arg("diffusion_coeff") = 0.1,
+             py::arg("dt") = 0.01,
+             py::arg("final_time") = 1.0)
+
+        // Backward compatibility constructor (creates unit hyper cube)
+        .def(py::init<int, double, double, double>(),
+             R"pbdoc(
+                 Create a new diffusion environment with unit hyper cube geometry.
+                 
+                 This constructor is provided for backward compatibility.
+                 For new code, prefer using the geometry_config constructor.
+                 
+                 Args:
+                     refinement_level (int): Mesh refinement level
+                     diffusion_coeff (float): Physical diffusion coefficient
+                     dt (float): Time step size
+                     final_time (float): Total simulation time
              )pbdoc",
              py::arg("refinement_level") = 4,
              py::arg("diffusion_coeff") = 0.1,
              py::arg("dt") = 0.01,
              py::arg("final_time") = 1.0)
 
-        // Reset method - this is your RL environment's reset() function
+        // All the existing methods
         .def("reset", &TransientDiffusion::DiffusionEnvironmentWrapper::reset,
              R"pbdoc(
                  Reset the environment with a new initial condition.
                  
                  Args:
-                     initial_condition (callable): A Python function that takes (x, y) coordinates
-                         and returns the initial temperature at that point.
+                     initial_condition (callable): Function taking (x, y) coordinates
+                         and returning the initial temperature at that point.
                          
-                 Example:
-                     # Gaussian heat source at center
-                     def gaussian_initial(x, y):
-                         return np.exp(-10 * ((x-0.5)**2 + (y-0.5)**2))
-                     
-                     env.reset(gaussian_initial)
-                 
-                 This method is very fast because it only changes the initial values,
-                 not the underlying finite element structure.
+                 The initial condition function should handle the coordinate system
+                 of your chosen geometry. For example, a centered circular domain
+                 will have coordinates roughly in [-radius, radius] x [-radius, radius].
              )pbdoc",
              py::arg("initial_condition"))
 
-        // Step method - advances simulation by one time step
         .def("step", &TransientDiffusion::DiffusionEnvironmentWrapper::step,
-             R"pbdoc(
-                 Advance the simulation by one time step.
-                 
-                 This solves the linear system for the next time level using
-                 implicit time stepping. The method is unconditionally stable
-                 but requires solving a linear system at each step.
-                 
-                 If the simulation has reached the final time, this method
-                 does nothing (check is_done() first).
-             )pbdoc")
+             "Advance the simulation by one time step.")
 
-        // State query methods
         .def("get_time", &TransientDiffusion::DiffusionEnvironmentWrapper::get_time,
              "Get the current simulation time.")
 
@@ -126,19 +249,14 @@ PYBIND11_MODULE(diffusion_env, m) {
         .def("get_num_dofs", &TransientDiffusion::DiffusionEnvironmentWrapper::get_num_dofs,
              "Get the number of degrees of freedom (mesh points) in the simulation.")
 
-        // Data extraction methods - these return NumPy arrays
         .def("get_solution_data", &TransientDiffusion::DiffusionEnvironmentWrapper::get_solution_data,
              R"pbdoc(
                  Extract current solution values as a NumPy array.
                  
                  Returns:
                      numpy.ndarray: Solution values at all degrees of freedom.
-                         The array has shape (num_dofs,) where num_dofs depends
-                         on the mesh refinement level.
                  
-                 The ordering of values corresponds to the mesh points returned
-                 by get_mesh_points(). This gives you the complete state of the
-                 system at the current time.
+                 The coordinate locations for these values are given by get_mesh_points().
              )pbdoc")
 
         .def("get_mesh_points", &TransientDiffusion::DiffusionEnvironmentWrapper::get_mesh_points,
@@ -149,8 +267,11 @@ PYBIND11_MODULE(diffusion_env, m) {
                      numpy.ndarray: Coordinate array with shape (num_dofs, 2).
                          Each row contains [x, y] coordinates of a mesh point.
                  
-                 This tells you where each value in get_solution_data() is located
-                 in the physical domain [0,1] x [0,1].
+                 The coordinate ranges depend on your geometry choice:
+                 - Hyper cube: [0, size] x [0, size]
+                 - Hyper rectangle: [0, width] x [0, height]  
+                 - Hyper ball: approximately [-radius, radius] x [-radius, radius]
+                 - etc.
              )pbdoc")
 
         .def("get_physical_quantities", &TransientDiffusion::DiffusionEnvironmentWrapper::get_physical_quantities,
@@ -161,16 +282,10 @@ PYBIND11_MODULE(diffusion_env, m) {
                      numpy.ndarray: Array containing [total_energy, max_value, min_value,
                          energy_center_x, energy_center_y].
                  
-                 These quantities are often more useful for RL state representation
-                 than the raw finite element data, as they capture the essential
-                 physics in a compact form.
-                 
-                 - total_energy: Integral of solution over the domain
-                 - max_value, min_value: Extremal values in the solution
-                 - energy_center_x, energy_center_y: Weighted center of the solution
+                 These quantities provide a compact representation of the solution state
+                 that's often more useful for RL than the raw finite element data.
              )pbdoc")
 
-        // Optional output method
         .def("write_vtk", &TransientDiffusion::DiffusionEnvironmentWrapper::write_vtk,
              R"pbdoc(
                  Write current solution to VTK file for visualization.
@@ -178,32 +293,107 @@ PYBIND11_MODULE(diffusion_env, m) {
                  Args:
                      filename (str): Output filename (should end in .vtu).
                  
-                 Use this sparingly during RL training - only for episodes you want
-                 to examine in detail. For production training, extract data with
-                 get_solution_data() instead.
+                 The VTK file can be opened in ParaView or other visualization tools
+                 to examine the solution on your custom geometry.
              )pbdoc",
              py::arg("filename"))
 
-        // Parameter modification method
         .def("set_diffusion_coefficient", &TransientDiffusion::DiffusionEnvironmentWrapper::set_diffusion_coefficient,
              R"pbdoc(
                  Change the diffusion coefficient during simulation.
                  
                  Args:
                      K_new (float): New diffusion coefficient (must be positive).
-                 
-                 This allows your RL agent to control physical parameters as actions.
-                 The method rebuilds the system matrix, so use it sparingly within
-                 a single episode.
              )pbdoc",
-             py::arg("K_new"));
+             py::arg("K_new"))
 
-    // Module-level version information
-    m.attr("__version__") = "1.0.0";
+        // New methods for geometry information
+        .def("get_geometry_config", &TransientDiffusion::DiffusionEnvironmentWrapper::get_geometry_config,
+             R"pbdoc(
+                 Get the current geometry configuration.
+                 
+                 Returns:
+                     GeometryConfig: The geometry configuration used to create this environment.
+             )pbdoc")
+
+        .def("get_geometry_description", &TransientDiffusion::DiffusionEnvironmentWrapper::get_geometry_description,
+             R"pbdoc(
+                 Get a human-readable description of the current geometry.
+                 
+                 Returns:
+                     str: Descriptive string of the geometry type and parameters.
+             )pbdoc")
+
+        .def("get_domain_bounds", &TransientDiffusion::DiffusionEnvironmentWrapper::get_domain_bounds,
+             R"pbdoc(
+                 Get the bounding box of the computational domain.
+                 
+                 Returns:
+                     list: [x_min, x_max, y_min, y_max] bounding the domain.
+                 
+                 This is useful for understanding the coordinate system of your geometry
+                 and for setting up appropriate initial conditions.
+             )pbdoc");
+
+    // Module-level constants and information
+    m.attr("__version__") = "1.1.0";
     
-    // Add some useful constants
+    // Useful defaults
     m.attr("DEFAULT_REFINEMENT") = 4;
     m.attr("DEFAULT_DIFFUSION_COEFF") = 0.1;
     m.attr("DEFAULT_TIME_STEP") = 0.01;
     m.attr("DEFAULT_FINAL_TIME") = 1.0;
+    
+    // Add some example configurations as module-level convenience functions
+    m.def("create_square_env", 
+          [](double size, int refinement) {
+              auto config = TransientDiffusion::GeometryConfig::hyper_cube(size);
+              return TransientDiffusion::DiffusionEnvironmentWrapper(config, refinement);
+          },
+          R"pbdoc(
+              Convenience function to create a square domain environment.
+              
+              Args:
+                  size (float): Side length of the square
+                  refinement (int): Mesh refinement level
+              
+              Returns:
+                  DiffusionEnvironment: Environment with square geometry
+          )pbdoc",
+          py::arg("size") = 1.0, py::arg("refinement") = 4);
+          
+    m.def("create_circle_env", 
+          [](double radius, int refinement) {
+              auto config = TransientDiffusion::GeometryConfig::hyper_ball(radius);
+              return TransientDiffusion::DiffusionEnvironmentWrapper(config, refinement);
+          },
+          R"pbdoc(
+              Convenience function to create a circular domain environment.
+              
+              Args:
+                  radius (float): Radius of the circle
+                  refinement (int): Mesh refinement level
+              
+              Returns:
+                  DiffusionEnvironment: Environment with circular geometry
+          )pbdoc",
+          py::arg("radius") = 1.0, py::arg("refinement") = 4);
+
+    m.def("create_rectangle_env", 
+          [](double width, double height, int refinement) {
+              auto config = TransientDiffusion::GeometryConfig::hyper_rectangle(width, height);
+              return TransientDiffusion::DiffusionEnvironmentWrapper(config, refinement);
+          },
+          R"pbdoc(
+              Convenience function to create a rectangular domain environment.
+              
+              Args:
+                  width (float): Width of the rectangle
+                  height (float): Height of the rectangle
+                  refinement (int): Mesh refinement level
+              
+              Returns:
+                  DiffusionEnvironment: Environment with rectangular geometry
+          )pbdoc",
+          py::arg("width") = 1.0, py::arg("height") = 1.0, py::arg("refinement") = 4);
 }
