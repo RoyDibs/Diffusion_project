@@ -1,6 +1,6 @@
 # DiffusionEnv: High-Performance Finite Element Environment for Reinforcement Learning
 
-A sophisticated Python environment that combines the numerical power of [deal.II](https://www.dealii.org/) finite element computations with the flexibility of Python-based reinforcement learning frameworks. This package provides a high-performance solver for transient diffusion equations, wrapped in a clean Python interface optimized for RL research.
+A sophisticated Python environment that combines the numerical power of [deal.II](https://www.dealii.org/) finite element computations with the flexibility of Python-based reinforcement learning frameworks. This package provides a high-performance solver for transient diffusion equations with **multiple geometry support**, wrapped in a clean Python interface optimized for RL research.
 
 ## Table of Contents
 
@@ -9,6 +9,7 @@ A sophisticated Python environment that combines the numerical power of [deal.II
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
+- [Geometry Types](#geometry-types)
 - [API Reference](#api-reference)
 - [Usage Examples](#usage-examples)
 - [Performance Characteristics](#performance-characteristics)
@@ -28,47 +29,64 @@ DiffusionEnv solves the transient diffusion equation:
 Where:
 - `u(x,y,t)` is the field variable (e.g., temperature, concentration)
 - `K` is the diffusion coefficient
-- The domain is a unit square [0,1] × [0,1] with zero Dirichlet boundary conditions
+- The domain supports **multiple geometry types** with customizable dimensions and zero Dirichlet boundary conditions
+
+**New in v1.1**: The environment now supports six different geometry types including squares, rectangles, circles, annuli, L-shaped domains, and quarter circles, each with customizable dimensions. This significantly expands the range of research scenarios and allows for testing algorithm robustness across different domain shapes.
 
 This environment is specifically designed for reinforcement learning applications where agents need to:
-- Learn optimal control of PDE systems
-- Understand spatio-temporal dynamics
+- Learn optimal control of PDE systems across different domain geometries
+- Understand spatio-temporal dynamics in various geometric contexts
 - Work with high-dimensional state spaces derived from physics simulations
-- Explore parameter optimization in computational physics
+- Explore parameter optimization in computational physics with domain-specific challenges
+- Test algorithm robustness on non-rectangular and non-convex domains
 
 ### Key Design Principles
 
 - **Performance**: C++ finite element core with minimal Python overhead
-- **Flexibility**: Supports both compact state representations and full spatial solutions
+- **Geometric Flexibility**: Support for multiple domain shapes with customizable dimensions
 - **Compatibility**: Works with standard RL frameworks (Stable-Baselines3, Ray RLlib, custom PyTorch)
-- **Scientific Rigor**: Built on deal.II's proven finite element implementation
-- **Extensibility**: Modular architecture for adding new physics or boundary conditions
+- **Scientific Rigor**: Built on deal.II's proven finite element implementation with proper curved boundary handling
+- **Extensibility**: Modular architecture for adding new physics, boundary conditions, or geometry types
 
 ## Features
 
 ### Core Functionality
 
 - **High-Performance Finite Element Solver**: Built on deal.II 9.5+ with optimized sparse linear algebra
+- **Multiple Geometry Types**: Support for squares, rectangles, circles, annuli, L-shaped domains, and quarter circles
+- **Customizable Domain Dimensions**: Full control over geometry parameters (sizes, radii, aspect ratios)
 - **Flexible State Representations**: Choose between compact physical quantities or full spatial solution fields
 - **Configurable Physics Parameters**: Adjustable diffusion coefficients, time steps, and simulation duration
 - **Multiple Initial Conditions**: Python function interface for arbitrary initial condition specification
 - **Real-Time Data Access**: Extract solution data, mesh geometry, and physical quantities at any time step
+- **Geometry Introspection**: Query domain bounds, geometry description, and coordinate systems
 - **Visualization Support**: Optional VTU output for detailed analysis in VisIt/ParaView
+
+### Geometry Support
+
+- **Hyper Cube**: Square domains with customizable side length
+- **Hyper Rectangle**: Rectangular domains with custom width and height  
+- **Hyper Ball**: Circular domains with custom radius and center
+- **Hyper Shell**: Annular domains with custom inner and outer radii
+- **L-Shaped**: L-shaped domains with custom size (ideal for testing non-convex domains)
+- **Quarter Hyper Ball**: Quarter-circle domains with custom radius
 
 ### RL Integration Features
 
 - **Standard RL Interface**: Reset/step paradigm compatible with OpenAI Gym conventions
-- **Batch Processing**: Efficient repeated simulations for training
+- **Domain-Aware State Representation**: Geometry information available for state augmentation
+- **Batch Processing**: Efficient repeated simulations for training across different geometries
 - **Memory Efficient**: Pre-compiled finite element structures reused across episodes
-- **Configurable Rewards**: Framework for physics-based reward function design
-- **Multi-Scale Analysis**: Support for different mesh refinement levels
+- **Configurable Rewards**: Framework for physics-based and geometry-aware reward function design
+- **Multi-Scale Analysis**: Support for different mesh refinement levels across all geometries
 
 ### Technical Features
 
 - **CMake Integration**: Leverages deal.II's robust build system
+- **Backward Compatibility**: Existing code continues to work unchanged
 - **Python 3.7+ Support**: Modern Python integration with type hints
 - **NumPy Compatibility**: All data returned as NumPy arrays for seamless ML integration
-- **Error Handling**: Comprehensive error reporting for debugging
+- **Error Handling**: Comprehensive error reporting for debugging geometry configurations
 - **Cross-Platform**: Linux, macOS support (Windows with WSL)
 
 ## Requirements
@@ -171,13 +189,19 @@ python -c "import diffusion_env; print('Success!')"
 ### Verification Script
 
 ```bash
-# Run comprehensive verification
+# Run comprehensive verification including geometry features
 python -c "
 import diffusion_env
 import numpy as np
 
+# Test basic functionality
 env = diffusion_env.DiffusionEnvironment(refinement_level=3)
 print(f'✓ Environment created with {env.get_num_dofs()} DOF')
+
+# Test geometry configuration
+circle_config = diffusion_env.GeometryConfig.hyper_ball(radius=1.5)
+circle_env = diffusion_env.DiffusionEnvironment(circle_config, refinement_level=3)
+print(f'✓ Circular environment: {circle_env.get_geometry_description()}')
 
 env.reset(lambda x, y: np.sin(np.pi * x) * np.sin(np.pi * y))
 print('✓ Initial condition set')
@@ -186,19 +210,23 @@ env.step()
 solution = env.get_solution_data()
 print(f'✓ Solution extracted: {len(solution)} values')
 
-print('Installation verified successfully!')
+# Test convenience functions
+square_env = diffusion_env.create_square_env(size=2.0, refinement=3)
+print(f'✓ Convenience function: {square_env.get_geometry_description()}')
+
+print('Installation with geometry support verified successfully!')
 "
 ```
 
 ## Quick Start
 
-### Basic Usage
+### Basic Usage (Backward Compatible)
 
 ```python
 import diffusion_env
 import numpy as np
 
-# Create environment
+# Create environment with default unit square geometry
 env = diffusion_env.DiffusionEnvironment(
     refinement_level=4,    # Mesh resolution (3-6 typical)
     diffusion_coeff=0.1,   # Physical parameter K
@@ -207,6 +235,7 @@ env = diffusion_env.DiffusionEnvironment(
 )
 
 print(f"Environment has {env.get_num_dofs()} degrees of freedom")
+print(f"Geometry: {env.get_geometry_description()}")
 
 # Define initial condition
 def gaussian_heat_source(x, y):
@@ -230,70 +259,145 @@ while not env.is_done():
 print("Simulation completed!")
 ```
 
-### RL Integration Example
+### New Geometry Features Usage
 
 ```python
 import diffusion_env
 import numpy as np
 
-class DiffusionRLEnv:
-    """RL wrapper for the diffusion environment."""
-    
-    def __init__(self, **kwargs):
-        self.env = diffusion_env.DiffusionEnvironment(**kwargs)
-        self.initial_energy = None
-    
-    def reset(self, initial_params):
-        """Reset with parameterized initial condition."""
-        center_x, center_y, width = initial_params
-        
-        def initial_condition(x, y):
-            return np.exp(-width * ((x - center_x)**2 + (y - center_y)**2))
-        
-        self.env.reset(initial_condition)
-        self.initial_energy = self.env.get_physical_quantities()[0]
-        return self.get_state()
-    
-    def step(self):
-        """Advance simulation and return RL tuple."""
-        self.env.step()
-        
-        state = self.get_state()
-        reward = self.compute_reward()
-        done = self.env.is_done()
-        info = {'time': self.env.get_time()}
-        
-        return state, reward, done, info
-    
-    def get_state(self):
-        """Get state representation."""
-        # Option 1: Compact representation
-        return np.array(self.env.get_physical_quantities())
-        
-        # Option 2: Full spatial solution (uncomment to use)
-        # return np.array(self.env.get_solution_data())
-    
-    def compute_reward(self):
-        """Physics-based reward function."""
-        quantities = self.env.get_physical_quantities()
-        energy_ratio = quantities[0] / self.initial_energy
-        return energy_ratio  # Reward for energy preservation
+# Example 1: Circular domain
+circle_config = diffusion_env.GeometryConfig.hyper_ball(radius=2.0)
+circle_env = diffusion_env.DiffusionEnvironment(circle_config, refinement_level=4)
 
-# Usage
-rl_env = DiffusionRLEnv(refinement_level=4, final_time=0.5)
+print(f"Circle environment: {circle_env.get_geometry_description()}")
+print(f"Domain bounds: {circle_env.get_domain_bounds()}")  # [x_min, x_max, y_min, y_max]
 
-# Simulate RL episode
-initial_params = [0.3, 0.7, 15.0]  # center_x, center_y, width
-state = rl_env.reset(initial_params)
+# Define initial condition appropriate for circular domain
+def centered_gaussian(x, y):
+    """Gaussian centered at origin for circular domain"""
+    return np.exp(-(x**2 + y**2) / 0.5)
 
-while True:
-    state, reward, done, info = rl_env.step()
-    print(f"Reward: {reward:.4f}")
-    if done:
-        break
+circle_env.reset(centered_gaussian)
+
+# Example 2: Rectangular domain
+rect_config = diffusion_env.GeometryConfig.hyper_rectangle(width=3.0, height=1.5)
+rect_env = diffusion_env.DiffusionEnvironment(rect_config, refinement_level=4)
+
+# Example 3: L-shaped domain (non-convex)
+l_config = diffusion_env.GeometryConfig.l_shaped(domain_size=2.0)
+l_env = diffusion_env.DiffusionEnvironment(l_config, refinement_level=4)
+
+print(f"L-shaped environment: {l_env.get_geometry_description()}")
+
+# Example 4: Annular domain (with hole in center)
+annulus_config = diffusion_env.GeometryConfig.hyper_shell(inner_radius=0.5, outer_radius=1.5)
+annulus_env = diffusion_env.DiffusionEnvironment(annulus_config, refinement_level=4)
+
+# Example 5: Using convenience functions
+square_env = diffusion_env.create_square_env(size=2.0, refinement=4)
+circle_env_easy = diffusion_env.create_circle_env(radius=1.5, refinement=4)
+rect_env_easy = diffusion_env.create_rectangle_env(width=3.0, height=2.0, refinement=4)
 ```
 
+## Geometry Types
+
+### Supported Geometries
+
+#### 1. Hyper Cube (Square)
+```python
+config = diffusion_env.GeometryConfig.hyper_cube(side_length=2.0)
+# Creates a square domain [0, 2] × [0, 2]
+```
+
+#### 2. Hyper Rectangle
+```python
+config = diffusion_env.GeometryConfig.hyper_rectangle(width=3.0, height=1.5)
+# Creates a rectangular domain [0, 3] × [0, 1.5]
+```
+
+#### 3. Hyper Ball (Circle)
+```python
+config = diffusion_env.GeometryConfig.hyper_ball(radius=1.5, center=(0.0, 0.0))
+# Creates a circular domain centered at origin with radius 1.5
+```
+
+#### 4. Hyper Shell (Annulus)
+```python
+config = diffusion_env.GeometryConfig.hyper_shell(inner_radius=0.5, outer_radius=1.2)
+# Creates an annular domain with hole in center
+```
+
+#### 5. L-Shaped Domain
+```python
+config = diffusion_env.GeometryConfig.l_shaped(domain_size=1.5)
+# Creates an L-shaped non-convex domain
+```
+
+#### 6. Quarter Hyper Ball
+```python
+config = diffusion_env.GeometryConfig.quarter_hyper_ball(radius=1.0)
+# Creates a quarter-circle domain
+```
+
+### Coordinate Systems
+
+Different geometries use different coordinate systems:
+
+| Geometry | Coordinate Range | Center Location |
+|----------|------------------|-----------------|
+| Hyper Cube | `[0, size] × [0, size]` | `(size/2, size/2)` |
+| Hyper Rectangle | `[0, width] × [0, height]` | `(width/2, height/2)` |
+| Hyper Ball | `≈ [-radius, radius] × [-radius, radius]` | `(0, 0)` by default |
+| Hyper Shell | Similar to hyper ball with hole | `(0, 0)` by default |
+| L-Shaped | Complex, use `get_domain_bounds()` | Variable |
+| Quarter Ball | First quadrant of circle | Variable |
+
+**Important**: Always use `env.get_domain_bounds()` to get exact coordinate ranges for any geometry.
+
+### Choosing Geometry for Research
+
+| Geometry | Best For | Challenges |
+|----------|----------|------------|
+| **Square/Rectangle** | Algorithm development, baseline testing | Simple, predictable |
+| **Circle** | Testing curved boundary handling | No corners, symmetric |
+| **Annulus** | Obstacle avoidance, barrier problems | Interior boundaries |
+| **L-Shaped** | Non-convex domains, corner effects | Re-entrant corners, complex shape |
+| **Quarter Circle** | Reduced state space, rapid prototyping | Boundary interactions |
+
 ## API Reference
+
+### GeometryConfig Class
+
+```python
+class GeometryConfig:
+    """Configuration for domain geometry and dimensions."""
+    
+    # Static factory methods (recommended approach)
+    @staticmethod
+    def hyper_cube(side_length: float = 1.0) -> GeometryConfig
+        """Create square domain configuration."""
+    
+    @staticmethod
+    def hyper_rectangle(width: float, height: float) -> GeometryConfig
+        """Create rectangular domain configuration."""
+    
+    @staticmethod  
+    def hyper_ball(radius: float, center: Tuple[float, float] = (0, 0)) -> GeometryConfig
+        """Create circular domain configuration."""
+    
+    @staticmethod
+    def hyper_shell(inner_radius: float, outer_radius: float, 
+                   center: Tuple[float, float] = (0, 0)) -> GeometryConfig
+        """Create annular domain configuration."""
+    
+    @staticmethod
+    def l_shaped(domain_size: float = 1.0) -> GeometryConfig
+        """Create L-shaped domain configuration."""
+    
+    @staticmethod
+    def quarter_hyper_ball(radius: float, center: Tuple[float, float] = (0, 0)) -> GeometryConfig
+        """Create quarter-circle domain configuration."""
+```
 
 ### DiffusionEnvironment Class
 
@@ -301,6 +405,7 @@ while True:
 
 ```python
 DiffusionEnvironment(
+    geometry_config: GeometryConfig = GeometryConfig.hyper_cube(),
     refinement_level: int = 4,
     diffusion_coeff: float = 0.1,
     dt: float = 0.01,
@@ -308,19 +413,27 @@ DiffusionEnvironment(
 )
 ```
 
-**Parameters:**
-- `refinement_level`: Mesh refinement level (3-6 typical). Higher = finer mesh, more DOF
-- `diffusion_coeff`: Physical diffusion coefficient K > 0
-- `dt`: Time step size. Smaller = more accurate but slower
-- `final_time`: Total simulation duration
+**New Parameters:**
+- `geometry_config`: Geometry configuration specifying domain type and dimensions
+
+**Backward Compatibility Constructor:**
+```python
+DiffusionEnvironment(
+    refinement_level: int = 4,
+    diffusion_coeff: float = 0.1,
+    dt: float = 0.01,
+    final_time: float = 1.0
+)
+# Creates unit hyper cube for backward compatibility
+```
 
 **Mesh Size Reference:**
-| Refinement Level | Degrees of Freedom | Typical Use |
-|------------------|-------------------|-------------|
-| 3 | 81 | Development, debugging |
-| 4 | 289 | Research, moderate resolution |
-| 5 | 1089 | High-resolution studies |
-| 6 | 4225 | Production, detailed analysis |
+| Refinement Level | Typical DOF (Square) | Typical DOF (Circle) | Typical Use |
+|------------------|---------------------|---------------------|-------------|
+| 3 | 81 | ~65 | Development, debugging |
+| 4 | 289 | ~250 | Research, moderate resolution |
+| 5 | 1089 | ~950 | High-resolution studies |
+| 6 | 4225 | ~3800 | Production, detailed analysis |
 
 #### Core Methods
 
@@ -331,21 +444,22 @@ Reset simulation with new initial condition.
 **Parameters:**
 - `initial_condition`: Python function `f(x, y) -> float` that defines u(x,y,0)
 
+**Geometry Considerations:**
+- Ensure initial condition is compatible with chosen geometry coordinate system
+- Use `get_domain_bounds()` to understand coordinate ranges
+- Consider symmetry and boundary conditions for optimal results
+
 **Example:**
 ```python
-# Sinusoidal initial condition
-env.reset(lambda x, y: np.sin(np.pi * x) * np.sin(np.pi * y))
+# Geometry-aware initial condition
+bounds = env.get_domain_bounds()
+center_x = (bounds[0] + bounds[1]) / 2
+center_y = (bounds[2] + bounds[3]) / 2
 
-# Gaussian peak
-env.reset(lambda x, y: np.exp(-10 * ((x-0.5)**2 + (y-0.5)**2)))
+def centered_gaussian(x, y):
+    return np.exp(-10 * ((x - center_x)**2 + (y - center_y)**2))
 
-# Multiple peaks
-def multi_peak(x, y):
-    peak1 = np.exp(-20 * ((x-0.3)**2 + (y-0.3)**2))
-    peak2 = np.exp(-20 * ((x-0.7)**2 + (y-0.7)**2))
-    return peak1 + 0.5 * peak2
-
-env.reset(multi_peak)
+env.reset(centered_gaussian)
 ```
 
 ##### `step() -> None`
@@ -359,6 +473,39 @@ get_time() -> float                    # Current simulation time
 get_timestep() -> int                  # Current time step number
 is_done() -> bool                      # True if t >= final_time
 get_num_dofs() -> int                  # Number of degrees of freedom
+```
+
+#### Geometry Information Methods (New)
+
+##### `get_geometry_config() -> GeometryConfig`
+
+Returns the geometry configuration used to create the environment.
+
+##### `get_geometry_description() -> str`
+
+Returns a human-readable description of the current geometry.
+
+**Example Output:**
+- `"Hyper cube with side length 2.000000"`
+- `"Circle with radius 1.500000 centered at (0.000000, 0.000000)"`
+- `"Rectangle 3.000000 x 1.500000"`
+
+##### `get_domain_bounds() -> List[float]`
+
+Returns the bounding box of the computational domain.
+
+**Returns:** `[x_min, x_max, y_min, y_max]`
+
+**Use Cases:**
+- Understanding coordinate system
+- Setting up appropriate initial conditions
+- Normalizing spatial coordinates for RL
+
+```python
+bounds = env.get_domain_bounds()
+x_range = bounds[1] - bounds[0]
+y_range = bounds[3] - bounds[2]
+domain_area_approx = x_range * y_range
 ```
 
 #### Data Extraction Methods
@@ -384,10 +531,17 @@ Returns physical coordinates of all mesh points.
 **Returns:** List of [x, y] coordinate pairs
 **Use case:** Spatial analysis, visualization, custom interpolation
 
+**Geometry Note:** Coordinate ranges depend on chosen geometry. Use `get_domain_bounds()` for reference.
+
 ```python
 points = env.get_mesh_points()
 x_coords = [p[0] for p in points]
 y_coords = [p[1] for p in points]
+
+# Verify coordinates are within expected bounds
+bounds = env.get_domain_bounds()
+assert all(bounds[0] <= x <= bounds[1] for x in x_coords)
+assert all(bounds[2] <= y <= bounds[3] for y in y_coords)
 ```
 
 ##### `get_physical_quantities() -> List[float]`
@@ -404,6 +558,8 @@ Returns 5 physically meaningful summary quantities.
 | 3 | Energy Center X | Weighted centroid x-coordinate | Spatial dynamics |
 | 4 | Energy Center Y | Weighted centroid y-coordinate | Spatial dynamics |
 
+**Geometry Note:** Energy center coordinates are in the coordinate system of the chosen geometry.
+
 **Use case:** Compact RL state representation, reward function design
 
 ```python
@@ -411,6 +567,11 @@ quantities = env.get_physical_quantities()
 total_energy = quantities[0]
 peak_value = quantities[1]
 center_x, center_y = quantities[3], quantities[4]
+
+# Check if energy center is within domain bounds
+bounds = env.get_domain_bounds()
+center_in_bounds = (bounds[0] <= center_x <= bounds[1] and 
+                   bounds[2] <= center_y <= bounds[3])
 ```
 
 #### Parameter Control Methods
@@ -426,7 +587,10 @@ Dynamically modify the diffusion coefficient during simulation.
 
 ```python
 # Start with slow diffusion
-env = DiffusionEnvironment(diffusion_coeff=0.05)
+env = DiffusionEnvironment(
+    diffusion_env.GeometryConfig.hyper_ball(radius=1.5),
+    diffusion_coeff=0.05
+)
 env.reset(initial_condition)
 
 # Speed up diffusion mid-simulation
@@ -450,246 +614,338 @@ Write current solution to VTU file for visualization in VisIt or ParaView.
 
 **Use case:** Detailed visualization, publication figures, debugging
 
+**Geometry Note:** VTU files correctly represent curved boundaries and complex geometries.
+
 ```python
-# Save specific time steps
-env.reset(initial_condition)
-env.write_vtk("initial_condition.vtu")
+# Save solutions from different geometries
+geometries = [
+    ("square", diffusion_env.GeometryConfig.hyper_cube(1.0)),
+    ("circle", diffusion_env.GeometryConfig.hyper_ball(0.56)),  # Same area
+    ("l_shape", diffusion_env.GeometryConfig.l_shaped(1.0))
+]
 
-for i in range(20):
-    env.step()
+for name, config in geometries:
+    env = diffusion_env.DiffusionEnvironment(config, refinement_level=4)
+    env.reset(initial_condition)
+    
+    for i in range(20):
+        env.step()
+    
+    env.write_vtk(f"solution_{name}_t{env.get_time():.3f}.vtu")
+```
 
-env.write_vtk("evolved_solution.vtu")
+### Convenience Functions
+
+```python
+# Quick environment creation for common geometries
+create_square_env(size: float = 1.0, refinement: int = 4) -> DiffusionEnvironment
+create_circle_env(radius: float = 1.0, refinement: int = 4) -> DiffusionEnvironment  
+create_rectangle_env(width: float = 1.0, height: float = 1.0, refinement: int = 4) -> DiffusionEnvironment
+```
+
+**Example:**
+```python
+# These are equivalent
+env1 = diffusion_env.DiffusionEnvironment(
+    diffusion_env.GeometryConfig.hyper_cube(2.0), refinement_level=4
+)
+
+env2 = diffusion_env.create_square_env(size=2.0, refinement=4)
 ```
 
 ## Usage Examples
 
-### Example 1: Parameter Study
+### Example 1: Basic Geometry Comparison
 
 ```python
 import diffusion_env
 import numpy as np
 import matplotlib.pyplot as plt
 
-def parameter_study():
-    """Study effect of diffusion coefficient on energy decay."""
+def compare_geometries():
+    """Compare diffusion behavior in different geometries."""
     
-    diffusion_coeffs = [0.05, 0.1, 0.2, 0.5]
-    results = {}
+    # Create environments with different geometries but similar "size"
+    configs = [
+        ("Square", diffusion_env.GeometryConfig.hyper_cube(1.0)),
+        ("Circle", diffusion_env.GeometryConfig.hyper_ball(0.56)),  # Roughly same area
+        ("Rectangle", diffusion_env.GeometryConfig.hyper_rectangle(1.2, 0.8)),  # Same area
+    ]
     
-    def standard_initial(x, y):
-        return np.sin(np.pi * x) * np.sin(np.pi * y)
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
     
-    for K in diffusion_coeffs:
-        env = diffusion_env.DiffusionEnvironment(
-            diffusion_coeff=K, 
-            dt=0.005, 
-            final_time=0.5
-        )
+    for i, (name, config) in enumerate(configs):
+        env = diffusion_env.DiffusionEnvironment(config, refinement_level=4)
         
-        env.reset(standard_initial)
+        # Same initial condition for all: centered Gaussian
+        bounds = env.get_domain_bounds()
+        center_x = (bounds[0] + bounds[1]) / 2
+        center_y = (bounds[2] + bounds[3]) / 2
         
-        times, energies = [], []
-        while not env.is_done():
-            times.append(env.get_time())
-            energies.append(env.get_physical_quantities()[0])
+        def centered_gaussian(x, y):
+            return np.exp(-10 * ((x - center_x)**2 + (y - center_y)**2))
+        
+        env.reset(centered_gaussian)
+        
+        # Run for same number of steps
+        for step in range(20):
             env.step()
         
-        results[K] = {'times': times, 'energies': energies}
+        # Plot results
+        points = np.array(env.get_mesh_points())
+        solution = np.array(env.get_solution_data())
+        
+        scatter = axes[i].scatter(points[:, 0], points[:, 1], c=solution, 
+                                cmap='hot', s=15, alpha=0.8)
+        axes[i].set_aspect('equal')
+        axes[i].set_title(f"{name}\nDoFs: {env.get_num_dofs()}")
+        
+        # Add geometry outline for circle
+        if name == "Circle":
+            circle = plt.Circle((center_x, center_y), 0.56, fill=False, color='black', linewidth=1)
+            axes[i].add_patch(circle)
+        
+        print(f"{name}: {env.get_num_dofs()} DoFs, Max temp: {np.max(solution):.4f}")
     
-    # Plot results
-    plt.figure(figsize=(10, 6))
-    for K, data in results.items():
-        plt.plot(data['times'], data['energies'], 
-                label=f'K = {K}', linewidth=2)
-    
-    plt.xlabel('Time')
-    plt.ylabel('Total Energy')
-    plt.title('Energy Decay for Different Diffusion Coefficients')
-    plt.legend()
-    plt.yscale('log')
-    plt.grid(True, alpha=0.3)
-    plt.savefig('parameter_study.png')
+    plt.tight_layout()
+    plt.suptitle("Diffusion in Different Geometries (Same Area)", y=1.02)
     plt.show()
 
-parameter_study()
+compare_geometries()
 ```
 
-### Example 2: Spatial Analysis
+### Example 2: Parameter Study Across Geometries
 
 ```python
 import diffusion_env
 import numpy as np
 import matplotlib.pyplot as plt
 
-def spatial_analysis():
-    """Analyze spatial distribution evolution."""
+def geometry_parameter_study():
+    """Study effect of diffusion coefficient across different geometries."""
     
-    env = diffusion_env.DiffusionEnvironment(refinement_level=5)
+    geometries = [
+        ("Square", diffusion_env.GeometryConfig.hyper_cube(1.0)),
+        ("Circle", diffusion_env.GeometryConfig.hyper_ball(0.56)),
+        ("L-shaped", diffusion_env.GeometryConfig.l_shaped(1.0))
+    ]
     
-    # Off-center Gaussian initial condition
-    def gaussian_source(x, y):
-        return np.exp(-30 * ((x-0.2)**2 + (y-0.8)**2))
+    diffusion_coeffs = [0.05, 0.1, 0.2]
     
-    env.reset(gaussian_source)
+    results = {}
     
-    # Store snapshots at different times
-    snapshots = []
-    target_times = [0.0, 0.05, 0.1, 0.2]
-    current_target = 0
-    
-    while not env.is_done() and current_target < len(target_times):
-        if env.get_time() >= target_times[current_target]:
-            solution = np.array(env.get_solution_data())
-            points = np.array(env.get_mesh_points())
-            snapshots.append({
-                'time': env.get_time(),
-                'solution': solution.copy(),
-                'points': points.copy()
-            })
-            current_target += 1
+    for geom_name, config in geometries:
+        results[geom_name] = {}
         
-        env.step()
+        for K in diffusion_coeffs:
+            env = diffusion_env.DiffusionEnvironment(
+                config,
+                diffusion_coeff=K, 
+                dt=0.005, 
+                final_time=0.5
+            )
+            
+            # Geometry-aware initial condition
+            bounds = env.get_domain_bounds()
+            center_x = (bounds[0] + bounds[1]) / 2
+            center_y = (bounds[2] + bounds[3]) / 2
+            
+            def standard_initial(x, y):
+                return np.exp(-15 * ((x - center_x)**2 + (y - center_y)**2))
+            
+            env.reset(standard_initial)
+            
+            times, energies = [], []
+            while not env.is_done():
+                times.append(env.get_time())
+                energies.append(env.get_physical_quantities()[0])
+                env.step()
+            
+            results[geom_name][K] = {'times': times, 'energies': energies}
     
-    # Create visualization
-    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-    axes = axes.flatten()
+    # Plot results
+    fig, axes = plt.subplots(1, len(geometries), figsize=(15, 5))
     
-    for i, snapshot in enumerate(snapshots):
+    for i, (geom_name, geom_results) in enumerate(results.items()):
         ax = axes[i]
-        scatter = ax.scatter(
-            snapshot['points'][:, 0], 
-            snapshot['points'][:, 1],
-            c=snapshot['solution'], 
-            cmap='hot', s=15, vmin=0, vmax=1
-        )
-        ax.set_title(f"t = {snapshot['time']:.3f}")
-        ax.set_xlabel('X')
-        ax.set_ylabel('Y')
-        ax.set_aspect('equal')
-        plt.colorbar(scatter, ax=ax)
+        
+        for K, data in geom_results.items():
+            ax.plot(data['times'], data['energies'], 
+                   label=f'K = {K}', linewidth=2)
+        
+        ax.set_xlabel('Time')
+        ax.set_ylabel('Total Energy')
+        ax.set_title(f'{geom_name} Geometry')
+        ax.legend()
+        ax.set_yscale('log')
+        ax.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    plt.savefig('spatial_evolution.png', dpi=150)
+    plt.savefig('geometry_parameter_study.png')
     plt.show()
 
-spatial_analysis()
+geometry_parameter_study()
 ```
 
-### Example 3: Custom RL Environment
+### Example 3: Custom Initial Conditions for Different Geometries
 
 ```python
 import diffusion_env
 import numpy as np
-from typing import Tuple, Dict, Any
 
-class OptimalHeatingEnv:
-    """
-    RL environment for learning optimal heating strategies.
+def create_geometry_specific_initial_conditions():
+    """Create initial conditions tailored to each geometry type."""
     
-    The agent controls the initial heat distribution and is rewarded
-    for achieving desired temperature patterns at specific times.
-    """
+    def square_initial(x, y):
+        """Checkerboard pattern for square domain."""
+        return 1.0 if (int(x*4) + int(y*4)) % 2 == 0 else 0.0
     
-    def __init__(self, target_time: float = 0.3, **env_kwargs):
-        self.env = diffusion_env.DiffusionEnvironment(
-            final_time=target_time, **env_kwargs
-        )
-        self.target_time = target_time
-        self.target_pattern = self._create_target_pattern()
-        
-    def _create_target_pattern(self) -> np.ndarray:
-        """Define target temperature pattern."""
-        # Get mesh geometry
-        dummy_initial = lambda x, y: 0.0
-        self.env.reset(dummy_initial)
-        points = np.array(self.env.get_mesh_points())
-        
-        # Target: uniform temperature of 0.5 in center region
-        target = np.zeros(len(points))
-        for i, (x, y) in enumerate(points):
-            if 0.3 <= x <= 0.7 and 0.3 <= y <= 0.7:
-                target[i] = 0.5
-        
-        return target
+    def circle_initial(x, y):
+        """Radial pattern for circular domain."""
+        r = np.sqrt(x**2 + y**2)
+        return np.cos(4 * np.pi * r) * np.exp(-2 * r**2)
     
-    def reset(self, action: np.ndarray) -> np.ndarray:
-        """
-        Reset with action-determined initial condition.
-        
-        Args:
-            action: [center_x, center_y, width, amplitude] for Gaussian source
-        """
-        center_x, center_y, width, amplitude = action
-        
-        # Clip to valid ranges
-        center_x = np.clip(center_x, 0.1, 0.9)
-        center_y = np.clip(center_y, 0.1, 0.9)
-        width = np.clip(width, 5.0, 50.0)
-        amplitude = np.clip(amplitude, 0.1, 2.0)
-        
-        def initial_condition(x, y):
-            return amplitude * np.exp(-width * ((x - center_x)**2 + (y - center_y)**2))
-        
-        self.env.reset(initial_condition)
-        return self._get_state()
+    def rectangle_initial(x, y):
+        """Wave pattern along length for rectangular domain."""
+        return np.sin(2 * np.pi * x) * np.exp(-5 * (y - 0.75)**2)
     
-    def step(self) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
-        """Advance simulation."""
-        self.env.step()
-        
-        state = self._get_state()
-        reward = self._compute_reward()
-        done = self.env.is_done()
-        
-        info = {
-            'time': self.env.get_time(),
-            'physical_quantities': self.env.get_physical_quantities(),
-            'target_error': self._get_target_error()
-        }
-        
-        return state, reward, done, info
+    def l_shape_initial(x, y):
+        """Multiple sources for L-shaped domain."""
+        source1 = np.exp(-20 * ((x - 0.2)**2 + (y - 0.2)**2))
+        source2 = np.exp(-20 * ((x - 0.8)**2 + (y - 0.5)**2))
+        return source1 + 0.5 * source2
     
-    def _get_state(self) -> np.ndarray:
-        """Get current state."""
-        quantities = self.env.get_physical_quantities()
-        time_remaining = self.target_time - self.env.get_time()
-        return np.array([*quantities, time_remaining])
+    def annulus_initial(x, y):
+        """Ring pattern for annular domain."""
+        r = np.sqrt(x**2 + y**2)
+        target_r = 0.65  # Middle of annulus
+        return np.exp(-50 * (r - target_r)**2)
     
-    def _compute_reward(self) -> float:
-        """Compute reward based on proximity to target."""
-        if not self.env.is_done():
-            return 0.0  # No reward until final time
-        
-        # Final reward based on how close we are to target pattern
-        current_solution = np.array(self.env.get_solution_data())
-        error = np.mean((current_solution - self.target_pattern)**2)
-        
-        # Convert to reward (higher = better)
-        reward = np.exp(-10 * error)
-        return reward
+    # Test each geometry with its custom initial condition
+    test_cases = [
+        ("Square", diffusion_env.GeometryConfig.hyper_cube(1.0), square_initial),
+        ("Circle", diffusion_env.GeometryConfig.hyper_ball(0.8), circle_initial),
+        ("Rectangle", diffusion_env.GeometryConfig.hyper_rectangle(2.0, 1.5), rectangle_initial),
+        ("L-shaped", diffusion_env.GeometryConfig.l_shaped(1.0), l_shape_initial),
+        ("Annulus", diffusion_env.GeometryConfig.hyper_shell(0.4, 0.9), annulus_initial)
+    ]
     
-    def _get_target_error(self) -> float:
-        """Get current error relative to target."""
-        current_solution = np.array(self.env.get_solution_data())
-        return np.sqrt(np.mean((current_solution - self.target_pattern)**2))
+    for name, config, initial_func in test_cases:
+        env = diffusion_env.DiffusionEnvironment(config, refinement_level=4)
+        env.reset(initial_func)
+        
+        print(f"{name} Environment:")
+        print(f"  Description: {env.get_geometry_description()}")
+        print(f"  DOFs: {env.get_num_dofs()}")
+        print(f"  Domain bounds: {env.get_domain_bounds()}")
+        
+        # Run a few steps and check energy
+        initial_energy = env.get_physical_quantities()[0]
+        for _ in range(10):
+            env.step()
+        final_energy = env.get_physical_quantities()[0]
+        
+        print(f"  Initial energy: {initial_energy:.6f}")
+        print(f"  Energy after 10 steps: {final_energy:.6f}")
+        print(f"  Energy ratio: {final_energy/initial_energy:.6f}")
+        print()
+        
+        # Optionally save for visualization
+        env.write_vtk(f"initial_condition_{name.lower()}.vtu")
 
-# Example usage
-rl_env = OptimalHeatingEnv(target_time=0.2, refinement_level=4)
+create_geometry_specific_initial_conditions()
+```
 
-# Simulate random policy
-for episode in range(5):
-    # Random action
-    action = np.random.uniform([0.2, 0.2, 10, 0.5], [0.8, 0.8, 30, 1.5])
+### Example 4: Adaptive Initial Conditions
+
+```python
+import diffusion_env
+import numpy as np
+
+def create_adaptive_initial_condition(env):
+    """Create initial condition that automatically adapts to any geometry."""
     
-    state = rl_env.reset(action)
-    print(f"Episode {episode + 1}: Action {action}")
+    bounds = env.get_domain_bounds()
+    geometry_config = env.get_geometry_config()
     
-    while True:
-        state, reward, done, info = rl_env.step()
-        
-        if done:
-            print(f"  Final reward: {reward:.4f}, Target error: {info['target_error']:.4f}")
-            break
+    center_x = (bounds[0] + bounds[1]) / 2
+    center_y = (bounds[2] + bounds[3]) / 2
+    domain_scale = max(bounds[1] - bounds[0], bounds[3] - bounds[2])
+    
+    def adaptive_initial(x, y):
+        # Adjust pattern based on geometry type
+        if geometry_config.type == diffusion_env.GeometryType.HYPER_BALL:
+            # For circles, use radial symmetry
+            r = np.sqrt((x - center_x)**2 + (y - center_y)**2)
+            max_radius = geometry_config.radius * 0.8
+            return np.exp(-5 * (r / max_radius)**2) if r <= max_radius else 0.0
+            
+        elif geometry_config.type == diffusion_env.GeometryType.HYPER_SHELL:
+            # For annulus, create ring pattern
+            r = np.sqrt((x - center_x)**2 + (y - center_y)**2)
+            target_radius = (geometry_config.inner_radius + geometry_config.outer_radius) / 2
+            return np.exp(-20 * (r - target_radius)**2)
+            
+        elif geometry_config.type == diffusion_env.GeometryType.HYPER_RECTANGLE:
+            # For rectangles, use aspect ratio aware pattern
+            norm_x = (x - bounds[0]) / (bounds[1] - bounds[0])
+            norm_y = (y - bounds[2]) / (bounds[3] - bounds[2])
+            return np.sin(2 * np.pi * norm_x) * np.sin(np.pi * norm_y)
+            
+        elif geometry_config.type == diffusion_env.GeometryType.L_SHAPED:
+            # For L-shape, multiple sources in different arms
+            source1 = np.exp(-15/domain_scale * ((x - center_x*0.5)**2 + (y - center_y*0.5)**2))
+            source2 = np.exp(-15/domain_scale * ((x - center_x*1.2)**2 + (y - center_y*1.2)**2))
+            return source1 + 0.6 * source2
+            
+        else:
+            # Default: centered Gaussian scaled to domain
+            width = 10.0 / domain_scale
+            return np.exp(-width * ((x - center_x)**2 + (y - center_y)**2))
+    
+    return adaptive_initial
+
+# Test adaptive initial conditions
+geometries = [
+    diffusion_env.GeometryConfig.hyper_cube(1.5),
+    diffusion_env.GeometryConfig.hyper_ball(1.0),
+    diffusion_env.GeometryConfig.hyper_rectangle(2.0, 1.2),
+    diffusion_env.GeometryConfig.hyper_shell(0.4, 1.0),
+    diffusion_env.GeometryConfig.l_shaped(1.5)
+]
+
+print("Testing adaptive initial conditions:")
+print("=" * 50)
+
+for config in geometries:
+    env = diffusion_env.DiffusionEnvironment(config, refinement_level=4)
+    
+    # Create and apply adaptive initial condition
+    initial_condition = create_adaptive_initial_condition(env)
+    env.reset(initial_condition)
+    
+    # Get initial state information
+    quantities = env.get_physical_quantities()
+    
+    print(f"Geometry: {env.get_geometry_description()}")
+    print(f"  Domain bounds: {env.get_domain_bounds()}")
+    print(f"  Initial energy: {quantities[0]:.6f}")
+    print(f"  Max value: {quantities[1]:.6f}")
+    print(f"  Energy center: ({quantities[3]:.3f}, {quantities[4]:.3f})")
+    
+    # Run simulation and track energy evolution
+    energy_history = [quantities[0]]
+    for _ in range(15):
+        env.step()
+        energy_history.append(env.get_physical_quantities()[0])
+    
+    # Calculate energy decay rate
+    initial_energy = energy_history[0]
+    final_energy = energy_history[-1]
+    decay_ratio = final_energy / initial_energy
+    
+    print(f"  Energy decay ratio: {decay_ratio:.6f}")
+    print()
 ```
 
 ## Performance Characteristics
@@ -703,160 +959,289 @@ for episode in range(5):
 | Step | O(N^1.5) | O(1) | Sparse solver |
 | Data Extraction | O(N) | O(N) | Copy overhead |
 
-### Scaling Behavior
+### Scaling Behavior by Geometry
 
 ```python
 # Typical performance on modern workstation (Intel i7, 16GB RAM)
 # Times in milliseconds
 
-Refinement Level | DOF  | Creation | Reset | Step | Extraction
-3               | 81   | 15 ms    | 1 ms  | 2 ms | 0.1 ms
-4               | 289  | 45 ms    | 2 ms  | 8 ms | 0.3 ms
-5               | 1089 | 150 ms   | 5 ms  | 25 ms| 1.0 ms
-6               | 4225 | 600 ms   | 15 ms | 80 ms| 4.0 ms
+Geometry Type       | Refinement | DOF  | Creation | Reset | Step | Extraction
+Square             | 4          | 289  | 45 ms    | 2 ms  | 8 ms | 0.3 ms
+Circle             | 4          | ~250 | 50 ms    | 2 ms  | 7 ms | 0.3 ms
+Rectangle (2:1)    | 4          | 289  | 45 ms    | 2 ms  | 8 ms | 0.3 ms
+L-shaped           | 4          | ~200 | 55 ms    | 2 ms  | 6 ms | 0.2 ms
+Annulus            | 4          | ~220 | 60 ms    | 2 ms  | 7 ms | 0.3 ms
+Quarter Circle     | 4          | ~120 | 40 ms    | 1 ms  | 4 ms | 0.1 ms
 ```
 
-### Memory Usage
+### Memory Usage by Geometry
 
 - **Core Environment**: ~50 MB + 200 bytes × DOF
 - **Per State**: 24 bytes × DOF (solution + coordinates)
 - **Temporary Storage**: ~100 bytes × DOF during stepping
+- **Geometry Overhead**: <1 MB additional for curved boundary information
 
 ### Optimization Tips
 
-1. **Choose Appropriate Mesh Size**: Start with refinement level 4 for development
-2. **Reuse Environments**: Create once, reset many times for different episodes
-3. **Batch Data Extraction**: Extract data only when needed for RL updates
-4. **Monitor Memory**: Large replay buffers can consume significant memory with high-dimensional states
+1. **Choose Appropriate Geometry and Mesh Size**: 
+   - Start with quarter circles or small rectangles for rapid prototyping
+   - Use refinement level 4 for development, 5+ for production
+   
+2. **Geometry-Specific Considerations**:
+   - Circular domains may be slightly more expensive due to curved boundaries
+   - L-shaped domains have fewer DOFs but more complex assembly
+   - Rectangular domains are most efficient for given refinement level
+
+3. **Reuse Environments**: Create once, reset many times for different episodes
+
+4. **Batch Data Extraction**: Extract data only when needed for RL updates
+
+5. **Monitor Memory**: Large replay buffers can consume significant memory with high-dimensional states
+
+6. **Geometry Selection Strategy**: Use simpler geometries during early training phases
 
 ## Advanced Usage
 
-### Custom Initial Conditions
+### Custom Geometry-Aware Initial Conditions
 
 ```python
 import diffusion_env
 import numpy as np
 
-# Piecewise initial condition
-def piecewise_initial(x, y):
-    if x < 0.5:
-        return 1.0 if y > 0.5 else 0.0
-    else:
-        return 0.5
+def create_physics_informed_initial_condition(env, heat_sources=None):
+    """
+    Create physically meaningful initial conditions based on geometry.
+    
+    Args:
+        env: DiffusionEnvironment instance
+        heat_sources: List of (x, y, strength) tuples for heat sources
+    """
+    bounds = env.get_domain_bounds()
+    config = env.get_geometry_config()
+    
+    if heat_sources is None:
+        # Default: single centered source
+        center_x = (bounds[0] + bounds[1]) / 2
+        center_y = (bounds[2] + bounds[3]) / 2
+        heat_sources = [(center_x, center_y, 1.0)]
+    
+    def physics_initial(x, y):
+        total = 0.0
+        
+        for source_x, source_y, strength in heat_sources:
+            # Distance from source
+            distance = np.sqrt((x - source_x)**2 + (y - source_y)**2)
+            
+            # Geometry-aware width calculation
+            if config.type == diffusion_env.GeometryType.HYPER_BALL:
+                # Scale with radius
+                width = 10.0 * config.radius
+                
+            elif config.type == diffusion_env.GeometryType.HYPER_SHELL:
+                # Scale with shell thickness
+                thickness = config.outer_radius - config.inner_radius
+                width = 20.0 / thickness
+                
+            elif config.type in [diffusion_env.GeometryType.HYPER_CUBE, 
+                               diffusion_env.GeometryType.HYPER_RECTANGLE]:
+                # Scale with domain size
+                domain_scale = max(bounds[1] - bounds[0], bounds[3] - bounds[2])
+                width = 15.0 / domain_scale
+                
+            else:
+                # Default scaling
+                width = 15.0
+            
+            # Add source contribution
+            contribution = strength * np.exp(-width * distance**2)
+            total += contribution
+        
+        return total
+    
+    return physics_initial
 
-# Sinusoidal pattern
-def wave_initial(x, y):
-    return np.sin(2 * np.pi * x) * np.cos(2 * np.pi * y)
+# Example usage
+geometries = [
+    diffusion_env.GeometryConfig.hyper_cube(2.0),
+    diffusion_env.GeometryConfig.hyper_ball(1.2),
+    diffusion_env.GeometryConfig.hyper_shell(0.5, 1.5),
+    diffusion_env.GeometryConfig.hyper_rectangle(3.0, 1.5)
+]
 
-# Random field (for stochastic studies)
-np.random.seed(42)
-random_coeffs = np.random.randn(5, 5)
-
-def random_initial(x, y):
-    value = 0.0
-    for i in range(5):
-        for j in range(5):
-            value += random_coeffs[i, j] * np.sin((i+1) * np.pi * x) * np.sin((j+1) * np.pi * y)
-    return np.abs(value)  # Ensure positive
-
-# Usage
-env = diffusion_env.DiffusionEnvironment()
-env.reset(piecewise_initial)
+for config in geometries:
+    env = diffusion_env.DiffusionEnvironment(config, refinement_level=4)
+    
+    print(f"Geometry: {env.get_geometry_description()}")
+    
+    # Single source case
+    initial_single = create_physics_informed_initial_condition(env)
+    env.reset(initial_single)
+    print(f"  Single source energy: {env.get_physical_quantities()[0]:.6f}")
+    
+    # Multiple sources case
+    bounds = env.get_domain_bounds()
+    multi_sources = [
+        (bounds[0] + 0.3 * (bounds[1] - bounds[0]), 
+         bounds[2] + 0.3 * (bounds[3] - bounds[2]), 1.0),
+        (bounds[0] + 0.7 * (bounds[1] - bounds[0]), 
+         bounds[2] + 0.7 * (bounds[3] - bounds[2]), 0.8)
+    ]
+    
+    initial_multi = create_physics_informed_initial_condition(env, multi_sources)
+    env.reset(initial_multi)
+    print(f"  Multi source energy: {env.get_physical_quantities()[0]:.6f}")
+    print()
 ```
 
-### Multi-Episode Batch Processing
+### Batch Processing with Different Geometries
 
 ```python
 import diffusion_env
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
+from typing import List, Tuple, Dict
 
-def run_episode(params):
-    """Run single episode with given parameters."""
-    env_params, initial_params = params
+def run_geometry_simulation(params: Tuple) -> Dict:
+    """Run simulation with specific geometry and parameters."""
+    config, sim_params, initial_params = params
     
-    env = diffusion_env.DiffusionEnvironment(**env_params)
+    env = diffusion_env.DiffusionEnvironment(config, **sim_params)
+    
+    # Geometry-adaptive initial condition
+    bounds = env.get_domain_bounds()
+    center_x, center_y, width_factor = initial_params
+    
+    # Normalize to domain
+    actual_center_x = bounds[0] + center_x * (bounds[1] - bounds[0])
+    actual_center_y = bounds[2] + center_y * (bounds[3] - bounds[2])
+    domain_scale = max(bounds[1] - bounds[0], bounds[3] - bounds[2])
+    actual_width = width_factor / domain_scale
     
     def initial_condition(x, y):
-        cx, cy, width = initial_params
-        return np.exp(-width * ((x - cx)**2 + (y - cy)**2))
+        return np.exp(-actual_width * ((x - actual_center_x)**2 + (y - actual_center_y)**2))
     
     env.reset(initial_condition)
     
-    # Run to completion
-    final_energy = 0.0
+    # Run simulation and collect data
+    time_series = []
     while not env.is_done():
+        quantities = env.get_physical_quantities()
+        time_series.append({
+            'time': env.get_time(),
+            'energy': quantities[0],
+            'max_value': quantities[1],
+            'center_x': quantities[3],
+            'center_y': quantities[4]
+        })
         env.step()
     
-    quantities = env.get_physical_quantities()
     return {
-        'initial_params': initial_params,
-        'final_energy': quantities[0],
-        'final_max': quantities[1]
+        'geometry_type': config.type.name,
+        'description': env.get_geometry_description(),
+        'num_dofs': env.get_num_dofs(),
+        'domain_bounds': env.get_domain_bounds(),
+        'time_series': time_series,
+        'final_energy': time_series[-1]['energy'] if time_series else 0.0
     }
 
-# Batch parameter study
-env_config = {'refinement_level': 4, 'final_time': 0.3}
-initial_conditions = [
-    [0.3, 0.3, 15.0],
-    [0.7, 0.7, 15.0], 
-    [0.5, 0.5, 10.0],
-    [0.5, 0.5, 25.0]
-]
-
-params_list = [(env_config, ic) for ic in initial_conditions]
-
-# Run in parallel
-with ThreadPoolExecutor(max_workers=4) as executor:
-    results = list(executor.map(run_episode, params_list))
-
-for result in results:
-    print(f"IC {result['initial_params']}: "
-          f"Final energy = {result['final_energy']:.6f}")
-```
-
-### Integration with Neural Networks
-
-```python
-import diffusion_env
-import numpy as np
-import torch
-import torch.nn as nn
-
-class SpatialCNN(nn.Module):
-    """CNN for processing spatial solution fields."""
+def batch_geometry_comparison():
+    """Run batch simulations across multiple geometries and parameters."""
     
-    def __init__(self, input_size, output_size):
-        super().__init__()
-        self.input_size = input_size
+    # Define geometries to test
+    geometries = [
+        diffusion_env.GeometryConfig.hyper_cube(1.0),
+        diffusion_env.GeometryConfig.hyper_ball(0.56),  # Same area as unit square
+        diffusion_env.GeometryConfig.hyper_rectangle(1.3, 0.77),  # Same area
+        diffusion_env.GeometryConfig.l_shaped(1.0),
+        diffusion_env.GeometryConfig.hyper_shell(0.3, 0.65)  # Same area
+    ]
+    
+    # Simulation parameters
+    sim_params = {
+        'refinement_level': 4,
+        'diffusion_coeff': 0.1,
+        'dt': 0.005,
+        'final_time': 0.4
+    }
+    
+    # Initial condition parameters (normalized coordinates)
+    initial_conditions = [
+        [0.3, 0.3, 15.0],  # Lower-left
+        [0.7, 0.7, 15.0],  # Upper-right
+        [0.5, 0.5, 10.0],  # Centered, wide
+        [0.5, 0.5, 25.0],  # Centered, narrow
+    ]
+    
+    # Create parameter combinations
+    params_list = []
+    for geometry in geometries:
+        for initial_params in initial_conditions:
+            params_list.append((geometry, sim_params, initial_params))
+    
+    print(f"Running {len(params_list)} simulations...")
+    
+    # Run simulations in parallel
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        results = list(executor.map(run_geometry_simulation, params_list))
+    
+    # Analyze results by geometry type
+    geometry_stats = {}
+    for result in results:
+        geom_type = result['geometry_type']
+        if geom_type not in geometry_stats:
+            geometry_stats[geom_type] = {
+                'count': 0,
+                'dof_counts': [],
+                'final_energies': [],
+                'energy_decay_rates': []
+            }
         
-        # Simple feedforward for demonstration
-        # In practice, you might use spatial convolutions
-        self.network = nn.Sequential(
-            nn.Linear(input_size, 512),
-            nn.ReLU(),
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.Linear(256, output_size)
-        )
+        stats = geometry_stats[geom_type]
+        stats['count'] += 1
+        stats['dof_counts'].append(result['num_dofs'])
+        stats['final_energies'].append(result['final_energy'])
+        
+        # Calculate energy decay rate
+        time_series = result['time_series']
+        if len(time_series) > 1:
+            initial_energy = time_series[0]['energy']
+            final_energy = time_series[-1]['energy']
+            total_time = time_series[-1]['time']
+            
+            if initial_energy > 0 and total_time > 0:
+                decay_rate = -np.log(final_energy / initial_energy) / total_time
+                stats['energy_decay_rates'].append(decay_rate)
     
-    def forward(self, x):
-        return self.network(x)
+    # Print summary
+    print("\nGeometry Performance Summary:")
+    print("=" * 70)
+    print(f"{'Geometry':<15} {'Count':<6} {'Avg DOF':<8} {'Avg Final Energy':<16} {'Avg Decay Rate':<15}")
+    print("-" * 70)
+    
+    for geom_type, stats in geometry_stats.items():
+        avg_dof = np.mean(stats['dof_counts'])
+        avg_energy = np.mean(stats['final_energies'])
+        avg_decay = np.mean(stats['energy_decay_rates']) if stats['energy_decay_rates'] else 0.0
+        
+        print(f"{geom_type:<15} {stats['count']:<6} {avg_dof:<8.0f} "
+              f"{avg_energy:<16.6f} {avg_decay:<15.6f}")
+    
+    return results, geometry_stats
 
-# Usage with DiffusionEnv
-env = diffusion_env.DiffusionEnvironment(refinement_level=4)
-model = SpatialCNN(env.get_num_dofs(), 4)  # 4 action dimensions
-
-# Simulate training step
-env.reset(lambda x, y: np.sin(np.pi * x) * np.sin(np.pi * y))
-env.step()
-
-# Get state and convert to tensor
-solution = torch.FloatTensor(env.get_solution_data())
-action = model(solution)
-
-print(f"State dimension: {solution.shape}")
-print(f"Action: {action.detach().numpy()}")
+# Run batch comparison
+if __name__ == "__main__":
+    results, stats = batch_geometry_comparison()
+    
+    # Additional analysis
+    print("\nDetailed Analysis:")
+    print("-" * 30)
+    
+    for geom_type, stat in stats.items():
+        print(f"\n{geom_type}:")
+        print(f"  DOF range: {min(stat['dof_counts'])} - {max(stat['dof_counts'])}")
+        print(f"  Energy std: {np.std(stat['final_energies']):.6f}")
+        if stat['energy_decay_rates']:
+            print(f"  Decay rate std: {np.std(stat['energy_decay_rates']):.6f}")
 ```
 
 ## Troubleshooting
@@ -890,6 +1275,55 @@ ImportError: dynamic module does not define module export function
 2. Rebuild extension: `python setup.py build_ext --inplace`
 3. Check shared library dependencies: `ldd diffusion_env*.so`
 
+### Geometry-Related Issues
+
+#### Invalid Geometry Configuration
+```bash
+std::invalid_argument: Shell radii must satisfy 0 < inner_radius < outer_radius
+```
+
+**Solutions:**
+1. Verify geometry parameters are physically valid
+2. Check that radii are positive for circular geometries
+3. Ensure outer radius > inner radius for shell geometries
+4. Verify rectangle dimensions are positive
+
+```python
+# Correct geometry configurations
+config1 = diffusion_env.GeometryConfig.hyper_shell(0.5, 1.2)  # Valid: inner < outer
+config2 = diffusion_env.GeometryConfig.hyper_rectangle(2.0, 1.5)  # Valid: positive dimensions
+
+# Invalid configurations (will raise errors)
+# config_bad1 = diffusion_env.GeometryConfig.hyper_shell(1.2, 0.5)  # inner > outer
+# config_bad2 = diffusion_env.GeometryConfig.hyper_ball(-1.0)  # negative radius
+```
+
+#### Initial Condition Out of Bounds
+```bash
+Warning: Initial condition evaluated outside domain bounds
+```
+
+**Solutions:**
+1. Use `get_domain_bounds()` to understand coordinate system
+2. Create geometry-aware initial conditions
+3. Test initial conditions with visualization
+
+```python
+# Geometry-aware initial condition
+def create_safe_initial_condition(env):
+    bounds = env.get_domain_bounds()
+    center_x = (bounds[0] + bounds[1]) / 2
+    center_y = (bounds[2] + bounds[3]) / 2
+    
+    def safe_initial(x, y):
+        # Ensure we're working within bounds
+        if not (bounds[0] <= x <= bounds[1] and bounds[2] <= y <= bounds[3]):
+            return 0.0
+        return np.exp(-10 * ((x - center_x)**2 + (y - center_y)**2))
+    
+    return safe_initial
+```
+
 ### Runtime Issues
 
 #### Memory Errors
@@ -899,8 +1333,9 @@ std::bad_alloc: Cannot allocate memory
 
 **Solutions:**
 1. Reduce refinement level
-2. Increase system memory
-3. Check for memory leaks in long-running scripts
+2. Use simpler geometries during development
+3. Increase system memory
+4. Check for memory leaks in long-running scripts
 
 #### Numerical Issues
 ```bash
@@ -909,706 +1344,76 @@ Solution values become NaN or extremely large
 
 **Solutions:**
 1. Reduce time step size
-2. Check initial condition validity
+2. Check initial condition validity for chosen geometry
 3. Verify diffusion coefficient is positive
+4. Ensure initial condition is compatible with boundary conditions
 
-#### Performance Issues
-
-**Slow compilation:**
-- Use parallel build: `python setup.py build_ext --inplace -j4`
-- Reduce optimization level during development
-
-**Slow execution:**
-- Use appropriate refinement level for your application
-- Consider smaller time steps for accuracy vs. speed trade-off
-- Profile with `cProfile` to identify bottlenecks
-
-### Debugging Tips
-
-#### Enable Verbose Output
 ```python
-import diffusion_env
-import numpy as np
+# Debugging numerical issues
+env = diffusion_env.DiffusionEnvironment(config, dt=0.001)  # Smaller time step
 
-# Create environment with debugging
-env = diffusion_env.DiffusionEnvironment(refinement_level=3)
-
-# Check environment state
-print(f"DOF: {env.get_num_dofs()}")
-print(f"Time step: {env.get_time()}")
-
-# Verify initial condition
 def debug_initial(x, y):
-    print(f"Initial condition called with x={x:.3f}, y={y:.3f}")
-    return np.sin(np.pi * x) * np.sin(np.pi * y)
+    value = your_initial_condition(x, y)
+    if not np.isfinite(value) or value < 0:
+        print(f"Warning: Invalid initial value {value} at ({x}, {y})")
+        return 0.0
+    return value
 
 env.reset(debug_initial)
 ```
 
-#### Validate Physics
+### Debugging Tips
+
+#### Enable Geometry Debugging
 ```python
-# Check energy conservation (should decrease monotonically)
-env.reset(lambda x, y: np.sin(np.pi * x) * np.sin(np.pi * y))
-
-prev_energy = float('inf')
-for i in range(10):
-    quantities = env.get_physical_quantities()
-    current_energy = quantities[0]
-    
-    if current_energy > prev_energy:
-        print(f"WARNING: Energy increased at step {i}")
-    
-    prev_energy = current_energy
-    env.step()
-```
-
-#### Memory Debugging
-```python
-import psutil
-import os
-
-def monitor_memory():
-    process = psutil.Process(os.getpid())
-    return process.memory_info().rss / 1024 / 1024  # MB
-
-# Monitor memory during simulation
-env = diffusion_env.DiffusionEnvironment(refinement_level=5)
-print(f"Initial memory: {monitor_memory():.1f} MB")
-
-env.reset(lambda x, y: np.exp(-10 * ((x-0.5)**2 + (y-0.5)**2)))
-print(f"After reset: {monitor_memory():.1f} MB")
-
-for i in range(50):
-    env.step()
-    if i % 10 == 0:
-        print(f"Step {i}, memory: {monitor_memory():.1f} MB")
-```
-
-## Development and Extending
-
-### Architecture Overview
-
-```
-DiffusionEnv Architecture:
-
-Python Layer (diffusion_env.py)
-├── User Interface Functions
-├── NumPy Array Conversions
-└── Error Handling
-
-Pybind11 Interface (python_wrapper.cc)
-├── Function Bindings
-├── Type Conversions
-└── Exception Handling
-
-C++ Core (DiffusionEnvironment.cc)
-├── Finite Element Setup
-├── Time Stepping Logic
-├── Data Extraction
-└── deal.II Integration
-
-deal.II Library
-├── Mesh Generation
-├── DOF Management
-├── Matrix Assembly
-└── Linear Solvers
-```
-
-### Adding New Features
-
-#### Custom Boundary Conditions
-
-To add new boundary conditions, modify `DiffusionEnvironment.cc`:
-
-```cpp
-// In setup_system() method
-void DiffusionEnvironmentWrapper::setup_system() {
-    // ... existing code ...
-    
-    // Add support for different BC types
-    if (boundary_condition_type == "dirichlet") {
-        VectorTools::interpolate_boundary_values(dof_handler, 0,
-            Functions::ZeroFunction<2>(), boundary_values);
-    } else if (boundary_condition_type == "neumann") {
-        // Implement Neumann conditions
-        // No essential boundary conditions to apply
-    }
-}
-```
-
-#### Time-Dependent Parameters
-
-```cpp
-// Add time-dependent diffusion coefficient
-void DiffusionEnvironmentWrapper::assemble_system() {
-    system_rhs = 0;
-    mass_matrix.vmult(system_rhs, old_solution);
-    
-    // Time-dependent K
-    double current_K = K * (1.0 + 0.1 * std::sin(2 * M_PI * time));
-    
-    Vector<double> tmp(dof_handler.n_dofs());
-    stiffness_matrix.vmult(tmp, old_solution);
-    system_rhs.add(-time_step * (1 - theta) * current_K, tmp);
-}
-```
-
-#### Additional Output Fields
-
-```cpp
-// Add velocity field computation
-std::vector<std::array<double, 2>> DiffusionEnvironmentWrapper::get_velocity_field() const {
-    std::vector<std::array<double, 2>> velocities(dof_handler.n_dofs());
-    
-    // Compute -K * grad(u) at each DOF
-    // This requires more sophisticated FE operations
-    
-    return velocities;
-}
-```
-
-### Testing Framework
-
-```python
-# tests/test_basic_functionality.py
 import diffusion_env
 import numpy as np
-import pytest
 
-class TestDiffusionEnvironment:
-    """Comprehensive test suite for DiffusionEnv."""
+def debug_geometry_setup(config):
+    """Debug geometry configuration and setup."""
+    print(f"Geometry config: {config.type.name}")
     
-    def test_environment_creation(self):
-        """Test basic environment creation."""
-        env = diffusion_env.DiffusionEnvironment(refinement_level=3)
-        assert env.get_num_dofs() > 0
-        assert env.get_time() == 0.0
-        assert not env.is_done()
+    # Create environment and check setup
+    env = diffusion_env.DiffusionEnvironment(config, refinement_level=3)
     
-    def test_initial_condition_setting(self):
-        """Test initial condition functionality."""
-        env = diffusion_env.DiffusionEnvironment(refinement_level=3)
-        
-        def test_initial(x, y):
-            return x + y
-        
+    print(f"Description: {env.get_geometry_description()}")
+    print(f"DOFs: {env.get_num_dofs()}")
+    print(f"Bounds: {env.get_domain_bounds()}")
+    
+    # Test with simple initial condition
+    bounds = env.get_domain_bounds()
+    center_x = (bounds[0] + bounds[1]) / 2
+    center_y = (bounds[2] + bounds[3]) / 2
+    
+    def test_initial(x, y):
+        return 1.0 if abs(x - center_x) < 0.1 and abs(y - center_y) < 0.1 else 0.0
+    
+    try:
         env.reset(test_initial)
-        solution = env.get_solution_data()
-        points = env.get_mesh_points()
+        print("✓ Initial condition set successfully")
         
-        # Verify initial condition is approximately satisfied
-        for i, (sol_val, point) in enumerate(zip(solution, points)):
-            expected = point[0] + point[1]
-            assert abs(sol_val - expected) < 0.1  # Allow for FE approximation
-    
-    def test_time_stepping(self):
-        """Test time stepping behavior."""
-        env = diffusion_env.DiffusionEnvironment(
-            refinement_level=3, 
-            final_time=0.05
-        )
-        
-        env.reset(lambda x, y: 1.0)  # Constant initial condition
-        
-        initial_time = env.get_time()
         env.step()
-        assert env.get_time() > initial_time
+        quantities = env.get_physical_quantities()
+        print(f"✓ First step completed, energy: {quantities[0]:.6f}")
+        
+    except Exception as e:
+        print(f"✗ Error during simulation: {e}")
     
-    def test_energy_conservation(self):
-        """Test that energy decreases monotonically."""
-        env = diffusion_env.DiffusionEnvironment(refinement_level=3)
-        
-        env.reset(lambda x, y: np.sin(np.pi * x) * np.sin(np.pi * y))
-        
-        energies = []
-        while not env.is_done():
-            quantities = env.get_physical_quantities()
-            energies.append(quantities[0])
-            env.step()
-        
-        # Energy should decrease monotonically
-        for i in range(1, len(energies)):
-            assert energies[i] <= energies[i-1], f"Energy increased at step {i}"
-    
-    def test_data_consistency(self):
-        """Test that solution and mesh data are consistent."""
-        env = diffusion_env.DiffusionEnvironment(refinement_level=3)
-        
-        env.reset(lambda x, y: x * y)
-        
-        solution = env.get_solution_data()
-        points = env.get_mesh_points()
-        
-        # Same number of solution values and mesh points
-        assert len(solution) == len(points)
-        assert len(solution) == env.get_num_dofs()
-    
-    def test_boundary_conditions(self):
-        """Test that boundary conditions are satisfied."""
-        env = diffusion_env.DiffusionEnvironment(refinement_level=4)
-        
-        env.reset(lambda x, y: 1.0)  # Non-zero initial condition
-        
-        # Run simulation
-        for _ in range(10):
-            env.step()
-        
-        solution = env.get_solution_data()
-        points = env.get_mesh_points()
-        
-        # Check that boundary points have approximately zero values
-        tolerance = 1e-10
-        for sol_val, point in zip(solution, points):
-            x, y = point[0], point[1]
-            if (abs(x) < tolerance or abs(x - 1.0) < tolerance or 
-                abs(y) < tolerance or abs(y - 1.0) < tolerance):
-                assert abs(sol_val) < tolerance, f"Boundary condition violated at ({x}, {y})"
+    return env
 
-# Run tests
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
-```
+# Test all geometry types
+geometry_configs = [
+    diffusion_env.GeometryConfig.hyper_cube(1.0),
+    diffusion_env.GeometryConfig.hyper_ball(0.8),
+    diffusion_env.GeometryConfig.hyper_rectangle(1.5, 1.0),
+    diffusion_env.GeometryConfig.hyper_shell(0.3, 0.8),
+    diffusion_env.GeometryConfig.l_shaped(1.0),
+    diffusion_env.GeometryConfig.quarter_hyper_ball(1.0)
+]
 
-### Benchmarking Suite
-
-```python
-# benchmarks/performance_benchmark.py
-import diffusion_env
-import numpy as np
-import time
-from typing import Dict, List
-
-class PerformanceBenchmark:
-    """Comprehensive performance benchmarking suite."""
-    
-    def __init__(self):
-        self.results = {}
-    
-    def benchmark_scaling(self) -> Dict[str, List[float]]:
-        """Benchmark performance across different problem sizes."""
-        refinement_levels = [3, 4, 5, 6]
-        
-        results = {
-            'refinement_levels': refinement_levels,
-            'dof_counts': [],
-            'creation_times': [],
-            'reset_times': [],
-            'step_times': [],
-            'extraction_times': []
-        }
-        
-        def standard_initial(x, y):
-            return np.sin(np.pi * x) * np.sin(np.pi * y)
-        
-        for level in refinement_levels:
-            print(f"Benchmarking refinement level {level}...")
-            
-            # Benchmark environment creation
-            start = time.time()
-            env = diffusion_env.DiffusionEnvironment(
-                refinement_level=level,
-                final_time=0.05  # Short simulation for benchmarking
-            )
-            creation_time = time.time() - start
-            
-            results['dof_counts'].append(env.get_num_dofs())
-            results['creation_times'].append(creation_time)
-            
-            # Benchmark reset
-            start = time.time()
-            env.reset(standard_initial)
-            reset_time = time.time() - start
-            results['reset_times'].append(reset_time)
-            
-            # Benchmark stepping
-            step_times = []
-            for _ in range(5):  # Multiple steps for averaging
-                start = time.time()
-                env.step()
-                step_times.append(time.time() - start)
-            
-            results['step_times'].append(np.mean(step_times))
-            
-            # Benchmark data extraction
-            extraction_times = []
-            for _ in range(10):
-                start = time.time()
-                solution = env.get_solution_data()
-                quantities = env.get_physical_quantities()
-                extraction_times.append(time.time() - start)
-            
-            results['extraction_times'].append(np.mean(extraction_times))
-        
-        self.results['scaling'] = results
-        return results
-    
-    def benchmark_repeated_episodes(self, num_episodes: int = 100) -> Dict[str, float]:
-        """Benchmark repeated episode execution."""
-        env = diffusion_env.DiffusionEnvironment(refinement_level=4, final_time=0.1)
-        
-        def random_initial(x, y):
-            return np.random.random() * np.exp(-10 * ((x-0.5)**2 + (y-0.5)**2))
-        
-        # Time many episodes
-        start = time.time()
-        for episode in range(num_episodes):
-            np.random.seed(episode)  # Reproducible randomness
-            env.reset(random_initial)
-            
-            while not env.is_done():
-                env.step()
-        
-        total_time = time.time() - start
-        
-        results = {
-            'num_episodes': num_episodes,
-            'total_time': total_time,
-            'time_per_episode': total_time / num_episodes,
-            'episodes_per_second': num_episodes / total_time
-        }
-        
-        self.results['episodes'] = results
-        return results
-    
-    def benchmark_memory_usage(self) -> Dict[str, float]:
-        """Benchmark memory usage patterns."""
-        import psutil
-        import os
-        
-        process = psutil.Process(os.getpid())
-        
-        # Baseline memory
-        baseline = process.memory_info().rss / 1024 / 1024  # MB
-        
-        # Create environment
-        env = diffusion_env.DiffusionEnvironment(refinement_level=5)
-        after_creation = process.memory_info().rss / 1024 / 1024
-        
-        # Reset environment
-        env.reset(lambda x, y: np.sin(np.pi * x) * np.sin(np.pi * y))
-        after_reset = process.memory_info().rss / 1024 / 1024
-        
-        # Extract data multiple times
-        for _ in range(100):
-            solution = env.get_solution_data()
-            points = env.get_mesh_points()
-        
-        after_extraction = process.memory_info().rss / 1024 / 1024
-        
-        results = {
-            'baseline_mb': baseline,
-            'creation_overhead_mb': after_creation - baseline,
-            'reset_overhead_mb': after_reset - after_creation,
-            'extraction_overhead_mb': after_extraction - after_reset,
-            'total_usage_mb': after_extraction
-        }
-        
-        self.results['memory'] = results
-        return results
-    
-    def generate_report(self) -> str:
-        """Generate comprehensive performance report."""
-        report = ["DiffusionEnv Performance Benchmark Report", "=" * 50, ""]
-        
-        if 'scaling' in self.results:
-            scaling = self.results['scaling']
-            report.extend([
-                "Scaling Performance:",
-                "Refinement | DOF    | Creation | Reset   | Step    | Extract",
-                "Level      | Count  | (ms)     | (ms)    | (ms)    | (ms)",
-                "-" * 60
-            ])
-            
-            for i, level in enumerate(scaling['refinement_levels']):
-                report.append(
-                    f"{level:^9} | {scaling['dof_counts'][i]:^6} | "
-                    f"{scaling['creation_times'][i]*1000:^8.1f} | "
-                    f"{scaling['reset_times'][i]*1000:^7.1f} | "
-                    f"{scaling['step_times'][i]*1000:^7.1f} | "
-                    f"{scaling['extraction_times'][i]*1000:^7.1f}"
-                )
-            report.append("")
-        
-        if 'episodes' in self.results:
-            episodes = self.results['episodes']
-            report.extend([
-                "Episode Performance:",
-                f"  Episodes run: {episodes['num_episodes']}",
-                f"  Total time: {episodes['total_time']:.2f} seconds",
-                f"  Time per episode: {episodes['time_per_episode']*1000:.1f} ms",
-                f"  Episodes per second: {episodes['episodes_per_second']:.1f}",
-                ""
-            ])
-        
-        if 'memory' in self.results:
-            memory = self.results['memory']
-            report.extend([
-                "Memory Usage:",
-                f"  Baseline: {memory['baseline_mb']:.1f} MB",
-                f"  Environment creation: +{memory['creation_overhead_mb']:.1f} MB",
-                f"  Reset overhead: +{memory['reset_overhead_mb']:.1f} MB",
-                f"  Data extraction overhead: +{memory['extraction_overhead_mb']:.1f} MB",
-                f"  Total usage: {memory['total_usage_mb']:.1f} MB",
-                ""
-            ])
-        
-        return "\n".join(report)
-
-# Usage
-if __name__ == "__main__":
-    benchmark = PerformanceBenchmark()
-    
-    print("Running scaling benchmark...")
-    benchmark.benchmark_scaling()
-    
-    print("Running episode benchmark...")
-    benchmark.benchmark_repeated_episodes(50)
-    
-    print("Running memory benchmark...")
-    benchmark.benchmark_memory_usage()
-    
-    print("\n" + benchmark.generate_report())
-```
-
-## Examples Gallery
-
-### Example 1: Reinforcement Learning with Stable-Baselines3
-
-```python
-# examples/sb3_integration.py
-import diffusion_env
-import numpy as np
-import gym
-from gym import spaces
-from stable_baselines3 import PPO
-from stable_baselines3.common.env_checker import check_env
-
-class DiffusionGymEnv(gym.Env):
-    """OpenAI Gym wrapper for DiffusionEnv."""
-    
-    def __init__(self, refinement_level=4):
-        super().__init__()
-        
-        self.env = diffusion_env.DiffusionEnvironment(
-            refinement_level=refinement_level,
-            final_time=0.3
-        )
-        
-        # Action space: [center_x, center_y, width, amplitude]
-        self.action_space = spaces.Box(
-            low=np.array([0.1, 0.1, 5.0, 0.1]),
-            high=np.array([0.9, 0.9, 30.0, 2.0]),
-            dtype=np.float32
-        )
-        
-        # Observation space: physical quantities + time remaining
-        self.observation_space = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(6,), dtype=np.float32
-        )
-        
-        self.initial_energy = None
-        self.target_center = np.array([0.5, 0.5])
-    
-    def reset(self):
-        # Random action for episode initialization
-        action = self.action_space.sample()
-        return self._apply_action_and_get_obs(action, reset=True)
-    
-    def step(self, action):
-        if self.env.is_done():
-            raise RuntimeError("Episode is done, call reset()")
-        
-        # Apply action (only at start of episode for this example)
-        obs = self._apply_action_and_get_obs(action)
-        
-        # Advance simulation
-        self.env.step()
-        
-        # Compute reward and check if done
-        reward = self._compute_reward()
-        done = self.env.is_done()
-        info = {'time': self.env.get_time()}
-        
-        return obs, reward, done, info
-    
-    def _apply_action_and_get_obs(self, action, reset=False):
-        if reset:
-            center_x, center_y, width, amplitude = action
-            
-            def initial_condition(x, y):
-                return amplitude * np.exp(-width * ((x - center_x)**2 + (y - center_y)**2))
-            
-            self.env.reset(initial_condition)
-            self.initial_energy = self.env.get_physical_quantities()[0]
-        
-        return self._get_observation()
-    
-    def _get_observation(self):
-        quantities = self.env.get_physical_quantities()
-        time_remaining = self.env.get_time() / 0.3  # Normalize time
-        return np.array([*quantities, time_remaining], dtype=np.float32)
-    
-    def _compute_reward(self):
-        quantities = self.env.get_physical_quantities()
-        
-        # Reward components
-        energy_preservation = quantities[0] / self.initial_energy
-        center_error = np.linalg.norm([quantities[3], quantities[4]] - self.target_center)
-        centering_reward = np.exp(-5 * center_error)
-        
-        return 0.3 * energy_preservation + 0.7 * centering_reward
-
-# Train agent
-if __name__ == "__main__":
-    env = DiffusionGymEnv(refinement_level=4)
-    check_env(env)  # Verify gym compatibility
-    
-    model = PPO("MlpPolicy", env, verbose=1)
-    model.learn(total_timesteps=10000)
-    
-    # Test trained agent
-    obs = env.reset()
-    for _ in range(100):
-        action, _ = model.predict(obs)
-        obs, reward, done, info = env.step(action)
-        if done:
-            break
-```
-
-### Example 2: Multi-Agent Cooperative Control
-
-```python
-# examples/multi_agent_control.py
-import diffusion_env
-import numpy as np
-from typing import List, Tuple
-
-class MultiAgentDiffusionEnv:
-    """Multi-agent environment for cooperative temperature control."""
-    
-    def __init__(self, num_agents=3, refinement_level=4):
-        self.num_agents = num_agents
-        self.env = diffusion_env.DiffusionEnvironment(
-            refinement_level=refinement_level,
-            final_time=0.4
-        )
-        
-        # Each agent controls one heat source
-        self.agent_positions = self._generate_agent_positions()
-        
-    def _generate_agent_positions(self) -> List[Tuple[float, float]]:
-        """Generate well-separated agent positions."""
-        positions = []
-        for i in range(self.num_agents):
-            angle = 2 * np.pi * i / self.num_agents
-            x = 0.5 + 0.3 * np.cos(angle)
-            y = 0.5 + 0.3 * np.sin(angle)
-            positions.append((x, y))
-        return positions
-    
-    def reset(self, agent_actions: List[float]) -> np.ndarray:
-        """
-        Reset with agent-controlled initial conditions.
-        
-        Args:
-            agent_actions: List of amplitudes for each agent's heat source
-        """
-        def multi_source_initial(x, y):
-            total = 0.0
-            for i, amplitude in enumerate(agent_actions):
-                pos_x, pos_y = self.agent_positions[i]
-                contribution = amplitude * np.exp(-15 * ((x - pos_x)**2 + (y - pos_y)**2))
-                total += contribution
-            return total
-        
-        self.env.reset(multi_source_initial)
-        return self._get_global_state()
-    
-    def step(self) -> Tuple[np.ndarray, List[float], bool, dict]:
-        """Advance simulation and return global state."""
-        self.env.step()
-        
-        global_state = self._get_global_state()
-        agent_rewards = self._compute_agent_rewards()
-        done = self.env.is_done()
-        
-        info = {
-            'time': self.env.get_time(),
-            'global_quantities': self.env.get_physical_quantities()
-        }
-        
-        return global_state, agent_rewards, done, info
-    
-    def _get_global_state(self) -> np.ndarray:
-        """Get state visible to all agents."""
-        quantities = self.env.get_physical_quantities()
-        
-        # Add agent-specific local information
-        solution = np.array(self.env.get_solution_data())
-        points = np.array(self.env.get_mesh_points())
-        
-        local_values = []
-        for pos_x, pos_y in self.agent_positions:
-            # Find nearest mesh point to agent
-            distances = np.sqrt((points[:, 0] - pos_x)**2 + (points[:, 1] - pos_y)**2)
-            nearest_idx = np.argmin(distances)
-            local_values.append(solution[nearest_idx])
-        
-        return np.array([*quantities, *local_values])
-    
-    def _compute_agent_rewards(self) -> List[float]:
-        """Compute individual agent rewards."""
-        quantities = self.env.get_physical_quantities()
-        solution = np.array(self.env.get_solution_data())
-        points = np.array(self.env.get_mesh_points())
-        
-        # Global objective: uniform temperature distribution
-        target_temperature = 0.3
-        global_reward = -np.mean((solution - target_temperature)**2)
-        
-        # Local objectives: maintain temperature near agent positions
-        agent_rewards = []
-        for pos_x, pos_y in self.agent_positions:
-            distances = np.sqrt((points[:, 0] - pos_x)**2 + (points[:, 1] - pos_y)**2)
-            nearest_idx = np.argmin(distances)
-            local_temp = solution[nearest_idx]
-            
-            local_reward = -abs(local_temp - target_temperature)
-            
-            # Combine global and local objectives
-            total_reward = 0.7 * global_reward + 0.3 * local_reward
-            agent_rewards.append(total_reward)
-        
-        return agent_rewards
-
-# Example usage
-if __name__ == "__main__":
-    env = MultiAgentDiffusionEnv(num_agents=3)
-    
-    # Simulate cooperative control
-    for episode in range(5):
-        print(f"\nEpisode {episode + 1}")
-        
-        # Random initial actions
-        agent_actions = np.random.uniform(0.5, 1.5, env.num_agents)
-        state = env.reset(agent_actions)
-        
-        print(f"Initial actions: {agent_actions}")
-        print(f"Initial state shape: {state.shape}")
-        
-        total_rewards = [0.0] * env.num_agents
-        
-        while True:
-            state, rewards, done, info = env.step()
-            
-            for i, reward in enumerate(rewards):
-                total_rewards[i] += reward
-            
-            if done:
-                break
-        
-        print(f"Final rewards: {total_rewards}")
-        print(f"Global energy: {info['global_quantities'][0]:.6f}")
+for config in geometry_configs:
+    print("=" * 50)
+    debug_geometry_setup(config)
 ```
 
 ## Contributing
@@ -1670,10 +1475,10 @@ pytest tests/ --cov=diffusion_env --cov-report=html
 
 ### Areas for Contribution
 
-- **New Physics**: Different PDEs, boundary conditions, or material properties
+- **New Geometry Types**: Additional shapes like ellipses, polygons, or custom domains
+- **Enhanced Physics**: Different PDEs, boundary conditions, or material properties
 - **Performance**: Optimization of critical loops, memory usage improvements
 - **Visualization**: Enhanced plotting utilities, interactive visualizations
-- **RL Integration**: Wrappers for additional RL frameworks
 - **Documentation**: Examples, tutorials, API improvements
 - **Testing**: Extended test coverage, performance benchmarks
 
@@ -1687,7 +1492,7 @@ If you use DiffusionEnv in your research, please cite:
   author={Your Name},
   year={2024},
   url={https://github.com/yourusername/diffusion-env},
-  note={Python package for physics-informed reinforcement learning}
+  note={Python package for physics-informed reinforcement learning with multiple geometry support}
 }
 ```
 
